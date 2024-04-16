@@ -37,8 +37,11 @@
 ;     ? never (when eaten or new bonus appears)
 ; ? larger power-up
 ; ? flicker all 3 objects, or only enemy and bonus?
-; - display
-;   - score
+; o display
+;   o score
+;     o display top score
+;     o display score of player which changed level last
+;     - display score of player which set new maximum level
 ;   - level
 ; ? flicker Player and Enemies when Bonus arrives (player is never over a pellet)
 ; ? pellets, wafers, dots...?
@@ -46,12 +49,13 @@
 ; ? wider enemies?
 
 
+
 ;===============================================================================
 ; A S S E M B L E R - S W I T C H E S
 ;===============================================================================
 
 VERSION         = $0002
-BASE_ADR        = $f800     ; 2K
+BASE_ADR        = $f000     ; 4K
 
   IFNCONST TV_MODE ; manually defined here
 NTSC            = 1
@@ -68,6 +72,8 @@ SAVEKEY         = 0 ; (-~220) support high scores on SaveKey
 PLUSROM         = 0 ; (-~50)
 RAND16          = 0 ; (-3) 16-bit random values
 COLOR_LINES     = 1 ; (-~20) use different colors for the lines between players
+EXTRA_GAP       = 1 ; (-4) one extra line between rows
+TOP_SCORE       = 1 ; (-41) display top score (else player who last changed level)
 
 
 ;===============================================================================
@@ -116,7 +122,7 @@ STACK_SIZE      = 6         ; used in kernel row setup
     ORG     $80
 
 frameCnt        .byte       ; even: enemy drawn, odd: bonus drawn
-tmpVars         ds 5
+tmpVars         ds 6
 randomLo        .byte
   IF RAND16 ;{
 randomHi        .byte
@@ -152,6 +158,9 @@ scoreHiLst      = scoreLst+NUM_PLAYERS
 ;---------------------------------------
 cxPelletBits    .byte                       ; temporary
 cxSpriteBits    .byte                       ; temporary
+  IF !TOP_SCORE
+scorePlayer     .byte
+  ENDIF
 
 RAM_END         = .
 
@@ -317,81 +326,86 @@ FREE_TOTAL SET FREE_TOTAL + FREE_GAP$
     SEG     Bank0
     ORG     BASE_ADR
 
-PfOffset
-    ds      2, pf01LeftLst - pfLst
-    ds      4, pf01LeftLst - pfLst
-    ds      4, pf20MiddleLst - pfLst
-    ds      2, pf20MiddleLst - pfLst
-    ds      4, pf12RightLst - pfLst
-    ds      4, pf12RightLst - pfLst
-
-PfMask
-    .byte   %11011111, %01111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
-    .byte   %11101111, %10111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
-
-; Bonus Scores:
-; Pellet        10    1
-; Power-Up      50    2
-; Enemy         100   5
-; Cherry        100   10
-; Strawberry    300   20
-; Orange        500   30        (aka Peach, Yellow Apple)
-; Apple         700   40
-; Melon         1000  50
-; Grapes        2000  60
-; Banana        3000  70
-; Pear          5000  80
-
-BonusScore
-    .byte   $10, $20, $30, $40, $50, $60, $70, $80
-
-BonusPtr
-; (Cherry, Strawberry, Orange, Apple, Melon, Galaxian, Bell, Key)
-    .byte   <CherryGfx, <StrawberryGfx, <OrangeGfx, <AppleGfx
-    .byte   <MelonGfx, <GrapesGfx, <BananaGfx, <PearGfx
-BonusColPtr
-    .byte   <CherryCol, <StrawberryCol, <OrangeCol, <AppleCol
-    .byte   <MelonCol, <GrapesCol, <BananaCol, <PearCol
-
-Pot2Bit
-    .byte   $01, $02, $04, $08, $10, $20, $40, $80
-Pot2Mask
-    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
-
-PlayerPtr
-    .byte   <PlayerGfx0, <PlayerGfx0, <PlayerGfx1, <PlayerGfx1
-    .byte   <PlayerGfx2, <PlayerGfx2, <PlayerGfx1, <PlayerGfx1
-    CHECKPAGE PlayerPtr
-
-;EnemyPtr
-;    .byte   <EnemyGfx0, <EnemyGfx0, <EnemyGfx1, <EnemyGfx1
-;    CHECKPAGE EnemyPtr ;
-
-PlayerCol
-    .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
-    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
-    CHECKPAGE PlayerCol
-EnemyColPtr
-    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
-    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
-    CHECKPAGE EnemyColPtr
 
   IF COLOR_LINES
 LineCols
     .byte   BLACK|$8, CYAN_GREEN|$8, PURPLE|$8, ORANGE|$8
     .byte   GREEN_YELLOW|$8, BLUE_CYAN|$8, MAUVE|$8, YELLOW|$8, WHITE
-
-    ds  10, 0
+    ds  20
   ELSE
-    ds  20, 0
+    ds  10, 0
   ENDIF
 
 ;---------------------------------------------------------------
 DrawScreen SUBROUTINE
+;---------------------------------------------------------------
+.scorePtr0  = tmpVars
+.scorePtr1  = tmpVars+2
+.scorePtr2  = tmpVars+4
+.scorePtr3  = $fa
+.scorePtr4  = $fc
+.scorePtr5  = $fe
+
+.waitTim
+    lda     INTIM
+    bne     .waitTim
+    sta     WSYNC
+;---------------------------------------
+; prepare score kernel:
+    sta     VBLANK              ; 3
+    sta     GRP0                ; 3         clear fragments
+    lda     #$f0|%11            ; 2
+    sta     NUSIZ0              ; 3
+    sta     NUSIZ1              ; 3
+    sta     VDELP1              ; 3
+    sta     REFP0               ; 3
+    sta     REFP1               ; 3
+    sta     HMCLR               ; 3
+    sta     HMP0                ; 3 = 29
+    lda     #>DigitGfx          ; 2
+    sta     .scorePtr0+1        ; 3
+    sta     .scorePtr1+1        ; 3
+    sta     RESP0               ; 3 = 11    @40
+    sta     RESP1               ; 3
+; setup high pointers:
+    sta     .scorePtr2+1        ; 3
+    sta     .scorePtr3+1        ; 3
+    sta     .scorePtr4+1        ; 3
+    sta     .scorePtr5+1        ; 3 = 12
+; draw score:
+    ldy     #FONT_H-1           ; 2 =  2    @54
+.loopScore                      ;           @63
+    lda     (.scorePtr5),y      ; 5
+    sta     WSYNC               ; 3 =  8
+;---------------------------------------
+    sta     HMOVE               ; 3
+    sta     GRP0                ; 3
+    lda     (.scorePtr4),y      ; 5
+    sta     GRP1                ; 3
+    lda     (.scorePtr3),y      ; 5
+    sta     GRP0                ; 3 = 22
+    lax     (.scorePtr0),y      ; 5
+    txs                         ; 2
+    lax     (.scorePtr2),y      ; 5
+    lda     (.scorePtr1),y      ; 5
+    SLEEP   2                   ; 2
+    stx     GRP1                ; 3 = 22    @44
+    sta     GRP0                ; 3         @47
+    tsx                         ; 2
+    stx     GRP1                ; 3         @52
+    sta     GRP0                ; 3 = 11
+    sta     HMCLR               ; 3
+    dey                         ; 2
+    bpl     .loopScore          ; 3/2= 8/7
+    iny
+    sty     GRP1
+    sty     GRP0
+    sty     GRP1
+    sty     NUSIZ0
+    sty     NUSIZ1
+    sty     VDELP1
+    ldx     #$ff                ; 2
+    txs                         ; 2
 ;---------------------------------------------------------------
 .loopCnt    = tmpVars
 .bonusFlag  = tmpVars+1         ; could be on stack,  if stack becomes larger
@@ -411,14 +425,6 @@ DrawScreen SUBROUTINE
     sta     .ptrCol1+1
 
     ldx     #NUM_PLAYERS-1
-    lda     #227+1
-.waitTim
-    ldy     INTIM
-    bne     .waitTim
-    sta     WSYNC
-    sty     VBLANK              ; 4
-    sta     TIM64T              ; 4
-;---------------------------------------------------------------
 .loopKernels                    ;           @08
     stx     .loopCnt            ; 3
     sta     WSYNC
@@ -524,6 +530,9 @@ EnterBranch
 .exit                           ;           @02/04
     ldx     #$ff                ; 2
     txs                         ; 2
+  IF EXTRA_GAP
+    sta     WSYNC
+  ENDIF
   IF COLOR_LINES
     ldx     .loopCnt            ; 3
     lda     LineCols,x           ; 4
@@ -785,30 +794,27 @@ TIM_1B
     sta     WSYNC
 ;---------------------------------------
     sty     COLUBK
+  IF EXTRA_GAP
+    sta     WSYNC
+  ENDIF
   IF COLOR_LINES
     lda     #WHITE
   ENDIF
     sta     WSYNC
 ;---------------------------------------
     sta     COLUBK
+    ldx     #2
     sta     WSYNC
 ;---------------------------------------
     sty     COLUBK
-
-    ldx     #2
-.waitScreen
-    lda     INTIM
-    bne     .waitScreen
-    sta     WSYNC
-;---------------------------------------
+;.waitScreen
+;    lda     INTIM
+;    bne     .waitScreen
+;    sta     WSYNC
+;;---------------------------------------
     stx     VBLANK
     jmp     ContDrawScreen
 ; /DrawScreen
-
-;    ALIGN   256
-
-    ds      10, 0
-
 
 ;---------------------------------------------------------------
 Start SUBROUTINE
@@ -842,7 +848,7 @@ VerticalBlank SUBROUTINE
     inc     frameCnt
 
   IF NTSC_TIM
-    lda     #44
+    lda     #44-1
   ELSE
     lda     #77
   ENDIF
@@ -1003,18 +1009,135 @@ VerticalBlank SUBROUTINE
     jmp     .loopMove
 
 .exitLoop
+
+; ******************** Setup Score ********************
+.tmpPtrLst  = tmpVars
+.scorePtr0  = tmpVars
+.scorePtr1  = tmpVars+2
+.scorePtr2  = tmpVars+4
+.scorePtr3  = $fa
+.scorePtr4  = $fc
+.scorePtr5  = $fe
+.scoreLst   = .scorePtr3
+.scoreLo    = .scoreLst
+.scoreMid   = .scoreLst+1
+.scoreHi    = .scoreLst+2
+.maxLo      = tmpVars
+.maxHi      = tmpVars+1
+.player     = tmpVars+2
+
+; determine player with maximum score:
+DEBUG0
+  IF TOP_SCORE
+    lda     #0
+    sta     .player
+    sta     .maxLo
+    sta     .maxHi
+    ldx     #NUM_PLAYERS-1
+.loopMax
+    ldy     scoreLoLst,x
+    lda     scoreHiLst,x
+    cmp     .maxHi
+    bcc     .nextMax
+    bne     .setMax
+    cpy     .maxLo
+    bcc     .nextMax
+.setMax
+    sta     .maxHi
+    sty     .maxLo
+    stx     .player
+.nextMax
+    dex
+    bpl     .loopMax
+; display maximum score:
+    ldx     .player
+  ELSE
+    ldx     scorePlayer
+  ENDIF
+    lda     PlayerCol,x
+    sta     COLUP0
+    sta     COLUP1
+    lda     scoreLoLst,x
+    sta     .scoreLo
+    lda     scoreHiLst,x
+    sta     .scoreMid
+    lda     #$00
+    sta     .scoreHi
+; setup score into temporary pointers:
+    bit     Vectors+1
+    ldx     #6-1
+.loopScores
+    txa
+    lsr
+    tay
+    lda     .scoreLst,y
+    pha
+    lsr
+    lsr
+    lsr
+    lsr
+    tay
+    bne     .skipHiZero
+    bvc     .skipHiZero
+    ldy     #ID_BLANK
+    NOP_IMM
+.skipHiZero
+    clv
+    lda     DigitPtr,y
+    sta     .tmpPtrLst,x
+    dex
+    pla
+    and     #$0f
+    tay
+    bne     .skipLoZero
+    bvc     .skipLoZero
+;    txa
+;    beq     .skipLoZero
+    ldy     #ID_BLANK
+    NOP_IMM
+.skipLoZero
+    clv
+    lda     DigitPtr,y
+    sta     .tmpPtrLst,x
+    dex
+    bpl     .loopScores
+; copy to real adresses:
+;    ldx     #3-1
+;    ldy     #6-1
+;.loopCopy
+;    lda     .tmpPtrLst+3,x ; 85 84 83
+;    sta     .scorePtr3,y   ; fe fc fa
+;    lda     .tmpPtrLst,x   ; 82 81 80
+;    sta     .scorePtr0,y   ; 84 82 80
+;    dey
+;    dey
+;    dex
+;    bpl     .loopCopy
+
+    lda     .tmpPtrLst+5    ; 85
+    sta     .scorePtr5      ; fe
+    lda     .tmpPtrLst+4    ; 84
+    sta     .scorePtr4      ; fc
+    lda     .tmpPtrLst+3    ; 83
+    sta     .scorePtr3      ; fa
+    lda     .tmpPtrLst+2    ; 82
+    sta     .scorePtr2      ; 84
+    lda     .tmpPtrLst+1    ; 81
+    sta     .scorePtr1      ; 82
+;    lda     .tmpPtrLst+0    ; 80
+;    sta     .scorePtr0      ; 80
 ; /VerticalBlank
     jmp     DrawScreen
 ContDrawScreen
 ;---------------------------------------------------------------
 OverScan SUBROUTINE
 ;---------------------------------------------------------------
-.loopCnt    = tmpVars
-.xPos       = tmpVars+1
-.maxLevel   = tmpVars+2
+.loopCnt        = tmpVars
+.xPos           = tmpVars+1
+.maxLevel       = tmpVars+2
 
   IF NTSC_TIM
-    lda     #36
+    lda     #36-2
   ELSE
     lda     #63
   ENDIF
@@ -1029,7 +1152,6 @@ OverScan SUBROUTINE
 .nextMax
     dex
     bpl     .loopMax
-DEBUG1
     sta     .maxLevel
 
     ldx     #NUM_PLAYERS-1
@@ -1040,24 +1162,29 @@ DEBUG1
     lda     frameCnt
     lsr
     bcc     .checkEnemy
+    lda     #X_BONUS_OFF
+    cmp     xBonusLst,x
+    beq     .checkEnemy
+    sta     xBonusLst,x
     lda     levelLst,x
+  REPEAT BONUS_SHIFT
+    lsr
+  REPEND
     and     #NUM_BONUS-1
     tay
     lda     BonusScore,y
     jsr     AddScoreLo
-    lda     #X_BONUS_OFF
-    sta     xBonusLst,x
-    bne     .skipCXSprite
+    jmp     .skipCXSprite
 
 .checkEnemy
     lda     enemyStates
     and     Pot2Bit,x       ; already dead?
     bne     .skipCXSprite   ;  yes, skip
-    lda     #ENEMY_PTS
-    jsr     AddScoreLo
     lda     enemyStates
     ora     Pot2Bit,x       ; -> eyes
     sta     enemyStates
+    lda     #ENEMY_PTS
+    jsr     AddScoreLo
     lda     xEnemyLst,x
     cmp     #SCW/2-4
     lda     enemyDirs
@@ -1133,6 +1260,9 @@ DEBUG1
 ;    lsr
     sta     bonusSpeed
 .skipSetSpeed
+  IF !TOP_SCORE
+    stx     scorePlayer
+  ENDIF
     inc     levelLst,x
 ; reset pellets:
     jsr     ResetLine
@@ -1157,6 +1287,7 @@ DEBUG1
     jmp     .loopPlayers
 
 .exitLoop
+
 .waitTim
     lda     INTIM
     bne     .waitTim
@@ -1281,7 +1412,73 @@ NextRandom SUBROUTINE
 ;===============================================================================
 ; R O M - T A B L E S (Bank 0)
 ;===============================================================================
-;    ALIGN_FREE_LBL 256, "ROM Tables"
+
+PfOffset
+    ds      2, pf01LeftLst - pfLst
+    ds      4, pf01LeftLst - pfLst
+    ds      4, pf20MiddleLst - pfLst
+    ds      2, pf20MiddleLst - pfLst
+    ds      4, pf12RightLst - pfLst
+    ds      4, pf12RightLst - pfLst
+
+PfMask
+    .byte   %11011111, %01111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+    .byte   %11101111, %10111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+
+; Bonus Scores:
+; Pellet        10    1
+; Power-Up      50    2
+; Enemy         100   5
+; Cherry        100   10
+; Strawberry    300   20
+; Orange        500   30        (aka Peach, Yellow Apple)
+; Apple         700   40
+; Melon         1000  50
+; Grapes        2000  60
+; Banana        3000  70
+; Pear          5000  80
+
+BonusScore
+    .byte   $10, $20, $30, $40, $50, $60, $70, $80
+
+BonusPtr
+; (Cherry, Strawberry, Orange, Apple, Melon, Galaxian, Bell, Key)
+    .byte   <CherryGfx, <StrawberryGfx, <OrangeGfx, <AppleGfx
+    .byte   <MelonGfx, <GrapesGfx, <BananaGfx, <PearGfx
+BonusColPtr
+    .byte   <CherryCol, <StrawberryCol, <OrangeCol, <AppleCol
+    .byte   <MelonCol, <GrapesCol, <BananaCol, <PearCol
+
+Pot2Bit
+    .byte   $01, $02, $04, $08, $10, $20, $40, $80
+Pot2Mask
+    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
+
+PlayerPtr
+    .byte   <PlayerGfx0, <PlayerGfx0, <PlayerGfx1, <PlayerGfx1
+    .byte   <PlayerGfx2, <PlayerGfx2, <PlayerGfx1, <PlayerGfx1
+    CHECKPAGE PlayerPtr
+
+;EnemyPtr
+;    .byte   <EnemyGfx0, <EnemyGfx0, <EnemyGfx1, <EnemyGfx1
+;    CHECKPAGE EnemyPtr ;
+
+PlayerCol
+    .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
+    CHECKPAGE PlayerCol
+EnemyColPtr
+    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
+    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
+    CHECKPAGE EnemyColPtr
+
+
+
+    ALIGN_FREE_LBL 256, "DigitGfx"
 
 DigitGfx
 Four
@@ -1397,6 +1594,9 @@ One
     .byte   %01111000
     .byte   %01111000
     .byte   %00111000
+
+Blank
+    ds      FONT_H, 0
   CHECKPAGE_DATA_LBL DigitGfx, "DigitGfx"
 
 ColDiff0
@@ -1423,6 +1623,8 @@ ColDiff0
 DigitPtr
     .byte   <Zero, <One, <Two, <Three, <Four
     .byte   <Five, <Six, <Seven, <Eight, <Nine
+ID_BLANK = . - DigitPtr
+    .byte   <Blank
 
 HMoveTbl
 ; this is calculated with 1 cycle extra on access
@@ -1961,14 +2163,10 @@ PearCol
     .byte   GREEN_YELLOW|$e
     .byte   BROWN|$6
     .byte   BROWN|$6
-
-
-; TODO: bonus gfx & colors
-
     CHECKPAGE ColorTbls
 
-
     ORG_FREE_LBL BASE_ADR | $ffc, "Vectors"
+Vectors
     .word   Start
     .word   Start
 
