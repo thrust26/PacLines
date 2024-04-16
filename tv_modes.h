@@ -41,38 +41,38 @@ NTSC_TIM        = 1
 ; general color constants
 BLACK           = $00
 WHITE           = $0e
-  IF NTSC_COL
-YELLOW          = $10
-BROWN           = $20
-ORANGE          = $30
-RED             = $40
-MAUVE           = $50
-VIOLET          = $60
-PURPLE          = $70
-BLUE            = $80
-BLUE_CYAN       = $90
-CYAN            = $a0
-CYAN_GREEN      = $b0
-GREEN           = $c0
-GREEN_YELLOW    = $d0
-GREEN_BEIGE     = $e0
-BEIGE           = $f0
-  ELSE
-YELLOW          = $20
-BROWN           = YELLOW
-ORANGE          = $40
-RED             = $60
-MAUVE           = $80
-VIOLET          = $a0
-PURPLE          = $c0
-BLUE            = $d0
-BLUE_CYAN       = $b0
-CYAN            = $90
-CYAN_GREEN      = $70
-GREEN           = $50
-GREEN_YELLOW    = $30
+  IF NTSC_COL               ;
+YELLOW          = $10       ;   0   CYAN
+BROWN           = $20       ;
+ORANGE          = $30       ;*  4   CYAN
+RED             = $40       ;*
+MAUVE           = $50       ;*  1   ORANGE
+VIOLET          = $60       ;
+PURPLE          = $70       ;   5   ORANGE
+BLUE            = $80       ;
+BLUE_CYAN       = $90       ;   2   RED
+CYAN            = $a0       ;*
+CYAN_GREEN      = $b0       ;   6   RED
+GREEN           = $c0       ;
+GREEN_YELLOW    = $d0       ;   3   MAUVE
+GREEN_BEIGE     = $e0       ;
+BEIGE           = $f0       ;   7   MAUVE
+  ELSE                      ;
+YELLOW          = $20       ;   0
+BROWN           = YELLOW    ;
+ORANGE          = $40       ;   4
+RED             = $60       ;
+MAUVE           = $80       ;   1
+VIOLET          = $a0       ;
+PURPLE          = $c0       ;   5
+BLUE            = $d0       ;
+BLUE_CYAN       = $b0       ;   2
+CYAN            = $90       ;
+CYAN_GREEN      = $70       ;   6
+GREEN           = $50       ;
+GREEN_YELLOW    = $30       ;   3
 GREEN_BEIGE     = GREEN_YELLOW
-BEIGE           = YELLOW
+BEIGE           = YELLOW    ;   7
   ENDIF
 
     LIST ON

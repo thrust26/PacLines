@@ -4,34 +4,41 @@
   LIST ON
 
 ; TODOs:
-; - difficulty ramp up
-;   ? globally
+; o difficulty ramp up
+;   x globally
 ;   x individually
-;   - trigger
+;   + mixed (levels individual, speed global)
+;   o trigger
 ;     ? time
-;     o level
+;     ? individual level
+;     + global level
 ;   - speeds
 ;     - enemies and players seperately (or both same speed?)
 ;     ? by value or index (with table)
-; - AI
-;   - enemies (following player)
-;     - hunting: move to player (no wrapping)
-;     - running: move to side away from player
-;     - dead   : move to far away side
-;   - player
-; - bonus items
-;   - based on current level
-;   - what happens to other people's items, when 1st player changes level?
+; o AI
+;   + enemies (following player)
+;     + hunting: move to player (no wrapping)
+;     + running: move to side away from player
+;     + dead   : move to far away side
+;   - player (not playing, controlled by AI)
+; + bonus items
+;   + based on current individual level
+;   ? when should they appear?
+;     + either at start of new level (delayed?)
+;     ? or fruits appear when power pill gets eaten (disapear at next level)
+;   ? when shoud fruits disappear
+;     ? disappear at border
+;     ? when power pill gets eaten
+;     + when level is finished
+;     ? never (when eaten or new fruit appears)
 ; ? larger power pill
-; - colors per sprite
-;   - flicker all 3 objects, or only enemy and bonus?
-;   ? Player (global 1x)
-;   ? 8 x Player
-;   - 4+1 x Enemy, 1 x Eyes, 7 x Bonus = 13 (* 14 bytes)
+; ? flicker all 3 objects, or only enemy and bonus?
 ; - display
 ;   - score
 ;   - level
-; - flicker Player and Enemies when fruit arrives
+; ? flicker Player and Enemies when Fruit arrives (player is never over a pellet)
+; ? pellets, wafers, dots...?
+; - running ghosts graphics/colors
 
 
 ;===============================================================================
@@ -78,7 +85,7 @@ NUM_PLAYERS     = 8
 POWER_TIM       = 120
 
 NUM_BONUS       = 8
-X_BONUS_OFF     = SCW
+X_BONUS_OFF     = $ff
 BONUS_SHIFT     = 1             ; 2 = every 4th level
 BONUS_MASK      = (1<<BONUS_SHIFT)-1
 
@@ -88,15 +95,7 @@ MAX_PL_SPEED    = 160
 ;INIT_EN_SPEED   = INIT_PL_SPEED-10  ; TODO
 ;DIFF_EN_SPEED   = 5                 ; TODO
 
-; stateLst constants:
-
-;ENEMY_DIR       = $08   ; right = 0    -> REFP1!
-;PLAYER_ALIVE    = $10   ; alive = 0
-;PLAYER_DIR      = $20   ; right = 0
-;BONUS_DIR       = $40   ; right = 0
-;ENEMY_DEAD      = $80   ; alive = 0, eyes = 1
-
-STACK_SIZE      = 6
+STACK_SIZE      = 6         ; used in kernel row setup
 
 
 ;===============================================================================
@@ -106,30 +105,29 @@ STACK_SIZE      = 6
     SEG.U   variables
     ORG     $80
 
-frameCnt        .byte
+frameCnt        .byte       ; even: enemy drawn, odd: bonus drawn
 tmpVars         ds 5
 randomLo        .byte
   IF RAND16 ;{
 randomHi        .byte
   ENDIF ;}
-
+levelLst        ds  NUM_PLAYERS
 playerSpeed     .byte
 playerSpeedSum  .byte
-playerDirs      .byte
-;enemySpeed      .byte   ; TODO
-;enemySpeedSum   .byte   ; TODO
-enemyDirs       .byte       ; 1 = left, 0 = right
-enemyStates     .byte
-bonusDirs       .byte
-bonusSpeed      .byte
+;enemySpeed      .byte       ; TODO
+;enemySpeedSum   .byte       ; TODO
+bonusSpeed      .byte       ; TODO: eliminate if bonus speed is always 50% of player speed
 bonusSpeedSum   .byte
-stateLst        ds  NUM_PLAYERS             ; TODO
-levelLst        ds  NUM_PLAYERS
 ;---------------------------------------
-xPlayerLst      ds  NUM_PLAYERS             ; 24 bytes
+playerDirs      .byte       ; 1 = left, 0 = right
+enemyDirs       .byte       ; 1 = left, 0 = right
+bonusDirs       .byte       ; 1 = left, 0 = right
+enemyStates     .byte       ; 0 = alive, 1 = eyes
+;---------------------------------------
+xPlayerLst      ds  NUM_PLAYERS             ; 32 bytes
 xEnemyLst       ds  NUM_PLAYERS
-xPillLst        ds  NUM_PLAYERS
 xBonusLst       ds  NUM_PLAYERS
+xPillLst        ds  NUM_PLAYERS
 ;---------------------------------------
 pfLst           ds  NUM_PLAYERS*3           ; 24 bytes
 pf01LeftLst     = pfLst
@@ -325,12 +323,7 @@ PfMask
     .byte   %10111111, %11101111, %11111011, %11111110
     .byte   %11111101, %11110111, %11011111, %01111111
 
-; Bonus Rules:
-; - either fruits have to be eaten BEFORE power pill (appear at start, disappear when pill is eaten)
-; - or fruits appear when power pill gets eaten (disapeat at next level)
-; - or fruits can always be eaten (change with next level)
-; - or only appear every nth level
-
+; Bonus Scores:
 ; Dot           10    1
 ; Power-Pill    50    2         TODO
 ; Enemy         100   5         TODO
@@ -369,48 +362,38 @@ PlayerPtr
 ;    CHECKPAGE EnemyPtr ;
 
 PlayerCol
-    .byte   YELLOW|$f, BLUE_CYAN|$f, ORANGE|$f, CYAN_GREEN|$f
-    .byte   RED|$f, GREEN|$f, VIOLET|$f, GREEN_BEIGE|$f
+    .byte   BEIGE|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
     CHECKPAGE PlayerCol
-;EnemyCol
-;    .byte   CYAN|$f, MAUVE|$f, RED|$f, ORANGE|$f
-;    .byte   CYAN|$f, MAUVE|$f, RED|$f, ORANGE|$f
 EnemyColPtr
-    .byte   <EnemyCol0, <EnemyCol1, <EnemyCol2, <EnemyCol3
-    .byte   <EnemyCol0, <EnemyCol1, <EnemyCol2, <EnemyCol3
+    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
+    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
     CHECKPAGE EnemyColPtr
 
-    ds  5, 0
+    ds  20, 0
 
 ;---------------------------------------------------------------
 DrawScreen SUBROUTINE
 ;---------------------------------------------------------------
 .loopCnt    = tmpVars
-.bonusFlag  = tmpVars+1         ; could be on stack
-.ptrCol1    = tmpVars+2         ; could be on stack
-.color0     = tmpVars+4         ; could be on stack
+.bonusFlag  = tmpVars+1         ; could be on stack,  if stack becomes larger
+.ptrCol1    = tmpVars+2         ; same
+.color0     = tmpVars+4         ; same
 .ptr0       = $fa
 .ptr1       = $fc
 .ptrBl      = $fe
 
-    ldy     #-1
     lda     frameCnt            ; 3
     lsr                         ; 2
-    bcc     .noBonus            ; 2/3
-; draw bonus
-    iny
-.noBonus
-    sty     .bonusFlag
+    lda     #$ff
+    adc     #0
+    sta     .bonusFlag          ;           0 = bonus frame, $ff = enemy frame
 
-;    lda     #>SpriteGfx
-;    sta     .ptr0+1
-;    sta     .ptr1+1
-;    sta     .ptrBl+1
     lda     #>ColorTbls
     sta     .ptrCol1+1
 
     ldx     #NUM_PLAYERS-1
-    lda     #227
+    lda     #227+1
 .waitTim
     ldy     INTIM
     bne     .waitTim
@@ -422,12 +405,12 @@ DrawScreen SUBROUTINE
     stx     .loopCnt            ; 3
     sta     WSYNC
 ;---------------------------------------
-    sty     GRP1                ; 3
+    sty     GRP1                ; 3         Y == 0!
 ; draw lines between players:
-    SLEEP   14
+    SLEEP   17
 
 X_OFS   = 48
-; prepare player:               ; 3         @17!
+; prepare player:               ; 3         @20!
     lda     xPlayerLst,x        ; 4
     clc                         ; 2
     adc     #X_OFS              ; 2
@@ -438,42 +421,34 @@ X_OFS   = 48
     pha                         ; 3 = 19    color
 ; prepare enemy/bonus:
     lda     xBonusLst,x         ; 4
+    ora     .bonusFlag          ; 3         0|$ff
     cmp     #X_BONUS_OFF        ; 2         if xBonus = OFF, draw enemy
-BranchEnemy
-    beq     .drawEnemy0         ; 2/3
-    ldy.w   .bonusFlag          ; 4
-    bpl     .contBonus0         ; 2/3
+BranchBonus
+    bne     .positionBonus      ; 2/3
+; position enemy:
     lda     xEnemyLst,x         ; 4
-.contSetupB
-    adc     #X_OFS              ; 2 = 20
-.contSetupE                     ;           @56
-    CHECKPAGE BranchEnemy
+    adc     #X_OFS-1            ; 2
+.contBonus                      ;   = 17    @56!
     pha                         ; 3         x-pos
     lda     #1                  ; 2
     pha                         ; 3         index
     lda     #LINE_COL           ; 2
     pha                         ; 3 = 13    color
-; prepare power pill (not drawn from stack)
+; prepare power pill (not drawn from stack):
     lda     xPillLst,x          ; 4         x-pos
-    ldx     #4                  ; 2         index
-    ldy     #0                  ; 2         color
-;    clc                         ; 2
-    adc     #X_OFS              ; 2 = 10    @75
+    ldx     #4                  ; 2 =  6    index
 ;---------------------------------------
-;    sta.w   CXCLR               ; 4
+    ldy     #0                  ; 2         color   @01
+;    clc                         ; 2
+    adc     #X_OFS              ; 2
     sec                         ; 2
 EnterBranch
     bcs     .enterLoop          ; 3 =  9!   @08!
 
-.contBonus0                     ;15
-    bpl    .contSetupB          ; 3 = 18
-
-.drawEnemy0                     ; 9
-    lda     xEnemyLst,x         ; 4
-    adc     #X_OFS-1            ; 2
-    SLEEP   2                   ; 2
-    bcc     .contSetupE         ; 3 = 20
-    DEBUG_BRK
+.positionBonus                  ;12
+    adc     #X_OFS              ; 2
+    bcc     .contBonus          ; 3 = 17
+    CHECKPAGE BranchBonus
 
 ;---------------------------------------------------------------
 .rightPos                       ;           @14
@@ -552,14 +527,14 @@ TIM_1A
     ldy     #<DisBlTbl          ; 2
 .showPill
     sty     .ptrBl              ; 3
-TIM_1B ; 50..53 cycles
-    sta     WSYNC               ; 3 = 15/16
+TIM_1B
+    sta     WSYNC               ; 3 = 15/16 @62..66
 ;---------------------------------------
     sta     HMOVE               ; 3
     lda     #0                  ; 2
     sta     COLUBK              ; 3 =  8
 
-    ldy     .bonusFlag          ; 3
+    bit     .bonusFlag          ; 3
     bmi     .drawEnemy          ; 2/3
     lda     xBonusLst,x         ; 4
     cmp     #X_BONUS_OFF        ; 2
@@ -568,7 +543,7 @@ TIM_1B ; 50..53 cycles
     lda     levelLst,x          ; 4
   REPEAT BONUS_SHIFT
     lsr                         ; 2/4/6     every 2nd/4th/8th level
-  REPEND                        ;   = 6..10
+  REPEND                        ;   =  6..10
     and     #NUM_BONUS-1        ; 2
     tay                         ; 2
     lda     BonusPtr,y          ; 4
@@ -580,39 +555,48 @@ TIM_1B ; 50..53 cycles
 ;---------------------------------------
     beq     .setRefP1           ; 3 =  3
 
-.drawEnemy                      ;14 = 14
+.drawEnemy                      ;14 = 14    @22
     lda     enemyStates         ; 3
     and     Pot2Bit,x           ; 4
     beq     .enemyAlive         ; 2/3
-    ldy     #<EnemyEyesGfx      ; 2
-    sty     .ptr1               ; 3
     ldy     #<EnemyEyesCol      ; 2
-    bne     .setColPtr          ; 3
+    sty     .ptrCol1            ; 3
+    ldy     #<EnemyEyesGfx      ; 2
+    bne     .setPtr1            ; 3
 
-.enemyAlive                     ;10 = 10
+.enemyAlive                     ;10 = 10    @32
+; setup colors:
+    lda     powerTimLst,x       ; 4
+    beq     .powerOff           ; 2/3
+    ldy     #<EnemyColDark      ; 2
+    cmp     #$50                ; 2
+    bcs     .setColPtr1x        ; 2/3
+    and     #$08                ; 2
+    bne     .setColPtr1x        ; 2/3
+    ldy     #<EnemyColBlink     ; 2
+.setColPtr1x
+    sty     .ptrCol1            ; 3 = 10..21
+    ldy     #<EnemyDarkGfx0     ; 2
+    lda     frameCnt            ; 3         TODO: animate in sync with speed?
+    and     #$04                ; 2
+    bne     .setPtr1            ; 2/3
+    ldy     #<EnemyDarkGfx1     ; 2
+    bne     .setPtr1            ; 3 = 14
+
+.powerOff                       ; 7         @39
+    ldy     EnemyColPtr,x       ; 4
+    sty     .ptrCol1            ; 3
     ldy     #<EnemyGfx0         ; 2
     lda     frameCnt            ; 3         TODO: animate in sync with speed?
     and     #$04                ; 2
     bne     .setPtr1            ; 2/3
     ldy     #<EnemyGfx1         ; 2
-.setPtr1
-    sty     .ptr1               ; 3 = 13/14
-; setup colors:
-    ldy     EnemyColPtr,x       ; 4
-    lda     powerTimLst,x       ; 4
-    beq     .powerOff           ; 2/3
-    ldy     #<EnemyColDark      ; 2
-    cmp     #$50                ; 2
-    bcs     .powerOff           ; 2/3
-    and     #$08                ; 2
-    beq     .powerOff           ; 2/3
-    ldy     #<EnemyColBlink     ; 2
-.powerOff
-.setColPtr
-    sty     .ptrCol1            ; 3 = 14..25
-; 2 cycles free
-    sta     WSYNC               ; 3 =  3
+.setPtr1                        ;   = 24/25 @63/64
+    sty     .ptr1               ; 3
+; 6 cycles free
+    sta     WSYNC               ; 3 =  6
 ;---------------------------------------
+; setup enemy reflection:
     ldy     #8-1                ; 2
     lda     enemyDirs           ; 3
     and     Pot2Bit,x           ; 4
@@ -620,14 +604,13 @@ TIM_1B ; 50..53 cycles
     iny                         ; 2         moving left
 .setRefP1
     sty     REFP1               ; 3 = 15/16
-
+; setup some high-pointer:
     lda     #>SpriteGfx         ; 2
     sta     .ptr0+1             ; 3
     sta     .ptr1+1             ; 3
-    sta     .ptrBl+1            ; 3 = 11
-
+    sta     .ptrBl+1            ; 3
     sta     CXCLR               ; 3
-    ldy     #GFX_H-1            ; 2 =  5
+    ldy     #GFX_H-1            ; 2 = 16
 .loopTop                        ;           @32/28
     lda     (.ptr0),y           ; 5
     sta     GRP0                ; 3         VDELed!
@@ -804,49 +787,7 @@ Start SUBROUTINE
 
     jsr     GameInit
 
-.mainLoop
-    jsr     VerticalBlank
-    jmp     DrawScreen
-ContDrawScreen
-    jsr     OverScan
-    jmp     .mainLoop
-
-;---------------------------------------------------------------
-GameInit SUBROUTINE
-;---------------------------------------------------------------
-    lda     #%1
-    sta     VDELP0
-    sta     VDELBL
-
-    lda     #%010000
-    sta     CTRLPF
-
-; random initial board:
-    ldx     #NUM_PLAYERS-1
-.loopPf
-    jsr     ResetLine
-    lda     #SCW*1/2-16     ; right of left pills
-    sta     xPlayerLst,x
-    lda     #SCW-8
-    sta     xEnemyLst,x
-    lda     #X_BONUS_OFF
-    sta     xBonusLst,x
-    dex
-    bpl     .loopPf
-
-    jsr     NextRandom
-    sta     playerDirs
-    jsr     NextRandom
-    sta     enemyDirs
-
-    lda     #INIT_PL_SPEED
-    sta     playerSpeed
-;    lsr
-    sta     bonusSpeed
-
-    rts
-; /GameInit
-
+MainLoop
 ;---------------------------------------------------------------
 VerticalBlank SUBROUTINE
 ;---------------------------------------------------------------
@@ -869,7 +810,6 @@ VerticalBlank SUBROUTINE
 .tmpSpeed       = tmpVars
 .playerSpeed    = tmpVars+1
 .bonusSpeed     = tmpVars+2
-;.eyesSpeed      = tmpVars+3
 
     lda     #0
     sta     .playerSpeed
@@ -1022,14 +962,15 @@ VerticalBlank SUBROUTINE
     jmp     .loopMove
 
 .exitLoop
-    rts
-; /GameCalc
-
+; /VerticalBlank
+    jmp     DrawScreen
+ContDrawScreen
 ;---------------------------------------------------------------
 OverScan SUBROUTINE
 ;---------------------------------------------------------------
 .loopCnt    = tmpVars
 .xPos       = tmpVars+1
+.maxLevel   = tmpVars+2
 
   IF NTSC_TIM
     lda     #36
@@ -1037,6 +978,18 @@ OverScan SUBROUTINE
     lda     #63
   ENDIF
     sta     TIM64T
+
+    lda     #0
+    ldx     #NUM_PLAYERS-1
+.loopMax
+    cmp     levelLst,x
+    bcs     .nextMax
+    lda     levelLst,x
+.nextMax
+    dex
+    bpl     .loopMax
+DEBUG1
+    sta     .maxLevel
 
     ldx     #NUM_PLAYERS-1
 .loopPlayers
@@ -1122,10 +1075,14 @@ OverScan SUBROUTINE
     ora     pf12RightLst,x
     bne     .skipCXPellet
 ; increase speeds: (TODO: enemy speed)
-    inc     levelLst,x
+; increase speed only for 1st player reaching next level:
+    lda     levelLst,x
+    cmp     .maxLevel
+    bcc     .skipSetSpeed
+    inc     .maxLevel
     lda     playerSpeed
-    clc
-    adc     #DIFF_PL_SPEED
+;    clc
+    adc     #DIFF_PL_SPEED-1
     cmp     #MAX_PL_SPEED+1
     bcs     .skipSetSpeed
 ;    bcc     .setSpeed
@@ -1135,6 +1092,7 @@ OverScan SUBROUTINE
 ;    lsr
     sta     bonusSpeed
 .skipSetSpeed
+    inc     levelLst,x
 ; reset pellets:
     jsr     ResetLine
 ; reset bonus:
@@ -1161,8 +1119,40 @@ OverScan SUBROUTINE
 .waitTim
     lda     INTIM
     bne     .waitTim
-    rts
 ; /OverScan
+    jmp     MainLoop
+
+;---------------------------------------------------------------
+GameInit SUBROUTINE
+;---------------------------------------------------------------
+    lda     #%1
+    sta     VDELP0
+    sta     VDELBL
+
+    lda     #%010000
+    sta     CTRLPF
+; setup initial board:
+    ldx     #NUM_PLAYERS-1
+.loopPf
+    jsr     ResetLine
+    lda     #SCW*1/2-16     ; at right of left pills
+    sta     xPlayerLst,x
+    lda     #SCW-8          ; right border
+    sta     xEnemyLst,x
+    lda     #X_BONUS_OFF    ; no bonus
+    sta     xBonusLst,x
+    dex
+    bpl     .loopPf
+
+; random initial directions:
+    jsr     NextRandom
+    sta     playerDirs
+    lda     #INIT_PL_SPEED
+    sta     playerSpeed
+;    lsr
+    sta     bonusSpeed
+    rts
+; /GameInit
 
 ;---------------------------------------------------------------
 AddScoreLo SUBROUTINE
@@ -1188,7 +1178,6 @@ ResetLine SUBROUTINE
     sta     pf20MiddleLst,x
     lda     #$ff
     sta     pf12RightLst,x
-
 ; position new pill:
     jsr     NextRandom
     and     #$78
@@ -1200,18 +1189,6 @@ ResetLine SUBROUTINE
 ;    clc
     adc     #6
     sta     xPillLst,x
-;    jsr     NextRandom
-;    and     #$0f
-;    cmp     #8
-;    bcc     .left
-;    adc     #4-1        ; skip 4 middle positions
-;.left
-;; 0..7, 12..19
-;    asl
-;    asl
-;    asl
-;    adc     #6
-;    sta     xPillLst,x ;
     rts
 
 ;---------------------------------------------------------------
@@ -1263,7 +1240,7 @@ NextRandom SUBROUTINE
 ;===============================================================================
 ; R O M - T A B L E S (Bank 0)
 ;===============================================================================
-    ALIGN_FREE_LBL 256, "ROM Tables"
+;    ALIGN_FREE_LBL 256, "ROM Tables"
 
 DigitGfx
 Four
@@ -1398,13 +1375,9 @@ ColDiff0
     .byte   $0
     CHECKPAGE ColDiff0
 
-    .byte   " PacLine x 8 Demo V"
+    .byte   " Pac-Lines x 8 - Demo V"
     VERSION_STR
     .byte   " - (C) 2024 Thomas Jentzsch "
-
-
-
-
 
 DigitPtr
     .byte   <Zero, <One, <Two, <Three, <Four
@@ -1423,6 +1396,18 @@ HMoveTbl
   ENDIF
 
     .byte   "JTZ"
+
+PfColTbl = . - (GFX_H-PILL_H)/2
+PillStart
+    .byte   0       ; = $08
+    .byte   0
+    .byte   $08
+    .byte   $0c
+    .byte   $04
+    .byte   $0e
+PILL_H = . - PillStart
+;    ds      (GFX_H-PILL_H)/2, 0        ; ball disabled anyway
+    CHECKPAGE (. + (GFX_H-PILL_H/2))    ; but still must not cross a page!
 
 ;BcdTbl
 ;    .byte $00, $06, $12, $18, $24, $30, $36
@@ -1509,7 +1494,6 @@ PlayerGfx2
     .byte   %00111110
     .byte   %00011100
 
-
 EnemyGfx0
     .byte   %01010101
     .byte   %00101010
@@ -1536,6 +1520,36 @@ EnemyGfx1
     .byte   %01011011
     .byte   %01011011
     .byte   %01001001
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00011100
+EnemyDarkGfx0
+    .byte   %01010101
+    .byte   %01010101
+    .byte   %01111111
+    .byte   %01010101
+    .byte   %01101011
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01101011
+    .byte   %01101011
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00011100
+EnemyDarkGfx1
+    .byte   %00101010
+    .byte   %01010101
+    .byte   %01111111
+    .byte   %01010101
+    .byte   %01101011
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01101011
+    .byte   %01101011
+    .byte   %01111111
     .byte   %01111111
     .byte   %00111110
     .byte   %00111110
@@ -1677,21 +1691,9 @@ PearGfx
     .byte   %00001000
     .byte   %00001100
 
-BlankGfx
-    ds      GFX_H,0
+;BlankGfx
+;    ds      GFX_H,0
 
-
-PfColTbl
-    ds      (GFX_H-PILL_H)/2, 0
-PillStart
-    .byte   0       ; = $08
-    .byte   0
-    .byte   $08
-    .byte   $0c
-    .byte   $04
-    .byte   $0e
-PILL_H = . - PillStart
-;    ds      (GFX_H-PILL_H)/2, 0
 EnaBlTbl
     ds      (GFX_H-PILL_H)/2, 0
 ;    ds      1, %10
@@ -1722,35 +1724,35 @@ EnemyCol0
     .byte   CYAN|$e
     .byte   CYAN|$e
 EnemyCol1
-    .byte   MAUVE|$6
-    .byte   MAUVE|$6
-    .byte   MAUVE|$8
-    .byte   MAUVE|$4
-    .byte   MAUVE|$a
-    .byte   MAUVE|$a
+    .byte   MAUVE|$6+2
+    .byte   MAUVE|$6+2
+    .byte   MAUVE|$8+2
+    .byte   MAUVE|$4+2
+    .byte   MAUVE|$a+2
+    .byte   MAUVE|$a+2
     .byte   0
     .byte   0
-    .byte   MAUVE|$a
-    .byte   MAUVE|$a
-    .byte   MAUVE|$c
-    .byte   MAUVE|$c
-    .byte   MAUVE|$e
-    .byte   MAUVE|$e
+    .byte   MAUVE|$a+2
+    .byte   MAUVE|$a+2
+    .byte   MAUVE|$c+2
+    .byte   MAUVE|$c+2
+    .byte   MAUVE|$e+2*0
+    .byte   MAUVE|$e+2*0
 EnemyCol2
-    .byte   RED|$6
-    .byte   RED|$6
-    .byte   RED|$8
-    .byte   RED|$4
-    .byte   RED|$a
-    .byte   RED|$a
+    .byte   RED|$6-2
+    .byte   RED|$6-2
+    .byte   RED|$8-2
+    .byte   RED|$4-2
+    .byte   RED|$a-2
+    .byte   RED|$a-2
     .byte   0
     .byte   0
-    .byte   RED|$a
-    .byte   RED|$a
-    .byte   RED|$c
-    .byte   RED|$c
-    .byte   RED|$e
-    .byte   RED|$e
+    .byte   RED|$a-2
+    .byte   RED|$a-2
+    .byte   RED|$c-2
+    .byte   RED|$c-2
+    .byte   RED|$e-2
+    .byte   RED|$e-2
 EnemyCol3
     .byte   ORANGE|$6
     .byte   ORANGE|$6
@@ -1770,7 +1772,7 @@ EnemyColDark
     .byte   BLUE|$6-4
     .byte   BLUE|$6-4
     .byte   BLUE|$8-4
-    .byte   BLUE|$4-4
+    .byte   BLUE|$a-4
     .byte   BLUE|$a-4
     .byte   BLUE|$a-4
     .byte   0
@@ -1782,16 +1784,16 @@ EnemyColDark
     .byte   BLUE|$e-4
     .byte   BLUE|$e-4
 EnemyColBlink
-    .byte   $6
-    .byte   $6
     .byte   $8
-    .byte   $4
+    .byte   $8
+    .byte   $a
+    .byte   $a
     .byte   $a
     .byte   $a
     .byte   0
     .byte   0
-    .byte   $a
-    .byte   $a
+    .byte   $c
+    .byte   $c
     .byte   $c
     .byte   $c
     .byte   $e
