@@ -19,14 +19,9 @@
 ;   - speeds
 ;     - enemies and players seperately (or both same speed?)
 ;     ? by value or index (with table)
-; o AI
-;   + enemies (following player)
-;     + hunting: move to player (no wrapping)
-;     + running: move to side away from player
-;     + dead   : move to far away side
+; - AI
 ;   - player (not playing, controlled by AI)
 ; + bonus items
-;   + based on current individual level
 ;   ? when should they appear?
 ;     + either at start of new level (delayed?)
 ;     ? or bonuses appear when power-up gets eaten (disapear at next level)
@@ -42,12 +37,23 @@
 ;     o display top score
 ;     o display score of player which changed level last
 ;     - display score of player which set new maximum level
+;     ? color gradients (would need another 2 bytes RAM for a pointer)
 ;   - level
+;   ? displayed player number
 ; ? flicker Player and Enemies when Bonus arrives (player is never over a pellet)
 ; ? pellets, wafers, dots...?
-; + running enemies graphics/colors
 ; ? wider enemies?
+; - align eating with pellets
 
+; DONEs:
+; + AI
+;   + enemies (following player)
+;     + hunting: move to player (no wrapping)
+;     + running: move to side away from player
+;     + dead   : move to far away side
+; + bonus items
+;   + based on current individual level
+; + running enemies graphics/colors
 
 
 ;===============================================================================
@@ -80,7 +86,7 @@ TOP_SCORE       = 1 ; (-41) display top score (else player who last changed leve
 ; C O L O R - C O N S T A N T S
 ;===============================================================================
 
-LINE_COL        = BLUE|6
+LINE_COL        = BLUE|6        ; !COLOR_LINES
 
 
 ;===============================================================================
@@ -331,7 +337,7 @@ FREE_TOTAL SET FREE_TOTAL + FREE_GAP$
 LineCols
     .byte   BLACK|$8, CYAN_GREEN|$8, PURPLE|$8, ORANGE|$8
     .byte   GREEN_YELLOW|$8, BLUE_CYAN|$8, MAUVE|$8, YELLOW|$8, WHITE
-    ds  20
+    ds  45
   ELSE
     ds  10, 0
   ENDIF
@@ -351,52 +357,41 @@ DrawScreen SUBROUTINE
     bne     .waitTim
     sta     WSYNC
 ;---------------------------------------
+    sta     HMOVE               ; 3
+    sta     VBLANK              ; 3 =  6
 ; prepare score kernel:
-    sta     VBLANK              ; 3
-    sta     GRP0                ; 3         clear fragments
-    lda     #$f0|%11            ; 2
-    sta     NUSIZ0              ; 3
-    sta     NUSIZ1              ; 3
-    sta     VDELP1              ; 3
-    sta     REFP0               ; 3
-    sta     REFP1               ; 3
-    sta     HMCLR               ; 3
-    sta     HMP0                ; 3 = 29
     lda     #>DigitGfx          ; 2
     sta     .scorePtr0+1        ; 3
     sta     .scorePtr1+1        ; 3
-    sta     RESP0               ; 3 = 11    @40
-    sta     RESP1               ; 3
-; setup high pointers:
     sta     .scorePtr2+1        ; 3
     sta     .scorePtr3+1        ; 3
     sta     .scorePtr4+1        ; 3
-    sta     .scorePtr5+1        ; 3 = 12
+    sta     .scorePtr5+1        ; 3 = 20
 ; draw score:
-    ldy     #FONT_H-1           ; 2 =  2    @54
-.loopScore                      ;           @63
-    lda     (.scorePtr5),y      ; 5
-    sta     WSYNC               ; 3 =  8
+    ldy     #FONT_H-1           ; 2 =  2    @28
+.loopScore                      ;           @60
+;    lda     (.colorPtr),y       ; 5
+;    sta     COLUP0              ; 3
+;    sta     COLUP1              ; 3 = 11
+    sta     WSYNC               ; 3 =  3
 ;---------------------------------------
-    sta     HMOVE               ; 3
+    lda     (.scorePtr5),y      ; 5
     sta     GRP0                ; 3
     lda     (.scorePtr4),y      ; 5
     sta     GRP1                ; 3
     lda     (.scorePtr3),y      ; 5
-    sta     GRP0                ; 3 = 22
+    sta     GRP0                ; 3 = 24
     lax     (.scorePtr0),y      ; 5
     txs                         ; 2
     lax     (.scorePtr2),y      ; 5
     lda     (.scorePtr1),y      ; 5
-    SLEEP   2                   ; 2
-    stx     GRP1                ; 3 = 22    @44
+    stx     GRP1                ; 3 = 20    @44
     sta     GRP0                ; 3         @47
     tsx                         ; 2
     stx     GRP1                ; 3         @52
     sta     GRP0                ; 3 = 11
-    sta     HMCLR               ; 3
     dey                         ; 2
-    bpl     .loopScore          ; 3/2= 8/7
+    bpl     .loopScore          ; 3/2= 5/4
     iny
     sty     GRP1
     sty     GRP0
@@ -1101,7 +1096,9 @@ DEBUG0
     sta     .tmpPtrLst,x
     dex
     bpl     .loopScores
-; copy to real adresses:
+; copy to real adresses and position sprites:
+    sta     WSYNC
+;---------------------------------------
 ;    ldx     #3-1
 ;    ldy     #6-1
 ;.loopCopy
@@ -1114,18 +1111,31 @@ DEBUG0
 ;    dex
 ;    bpl     .loopCopy
 
-    lda     .tmpPtrLst+5    ; 85
-    sta     .scorePtr5      ; fe
-    lda     .tmpPtrLst+4    ; 84
-    sta     .scorePtr4      ; fc
-    lda     .tmpPtrLst+3    ; 83
-    sta     .scorePtr3      ; fa
-    lda     .tmpPtrLst+2    ; 82
-    sta     .scorePtr2      ; 84
-    lda     .tmpPtrLst+1    ; 81
-    sta     .scorePtr1      ; 82
-;    lda     .tmpPtrLst+0    ; 80
-;    sta     .scorePtr0      ; 80
+    lda     .tmpPtrLst+5        ; 3             85
+    sta     .scorePtr5          ; 3             fe
+    lda     .tmpPtrLst+4        ; 3             84
+    sta     .scorePtr4          ; 3             fc
+    lda     .tmpPtrLst+3        ; 3             83
+    sta     .scorePtr3          ; 3             fa
+    lda     .tmpPtrLst+2        ; 3             82
+    sta     .scorePtr2          ; 3             84
+    lda     .tmpPtrLst+1        ; 3             81
+    sta     .scorePtr1          ; 3 = 30        82
+;    lda     .tmpPtrLst+0        ; 3             80
+;    sta     .scorePtr0          ; 3             80
+
+    sta     GRP0                ; 3         clear fragments
+    lda     #$f0|%11            ; 2
+    SLEEP   2
+    sta     RESP0               ; 3 = 10    @40
+    sta     RESP1               ; 3
+    sta     NUSIZ0              ; 3
+    sta     NUSIZ1              ; 3
+    sta     VDELP1              ; 3
+    sta     REFP0               ; 3
+    sta     REFP1               ; 3
+    sta     HMCLR               ; 3
+    sta     HMP0                ; 3
 ; /VerticalBlank
     jmp     DrawScreen
 ContDrawScreen
@@ -1599,18 +1609,18 @@ Blank
     ds      FONT_H, 0
   CHECKPAGE_DATA_LBL DigitGfx, "DigitGfx"
 
-ColDiff0
+ColDiff0    ; Player sprite shading
     .byte   $8
     .byte   $6
     .byte   $6
-    .byte   $6
+    .byte   $4
     .byte   $4
     .byte   $4      ; immediate load in kernel!
     .byte   0       ; pellet area
     .byte   0       ; pellet area
     .byte   $4
     .byte   $4
-    .byte   $2
+    .byte   $4
     .byte   $2
     .byte   $2
     .byte   $0
