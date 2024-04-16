@@ -1,3 +1,7 @@
+; Pac-Lines x 8
+;
+; (C)2024 - Thomas Jentzsch
+
     processor 6502
   LIST OFF
     include vcs.h
@@ -25,20 +29,21 @@
 ;   + based on current individual level
 ;   ? when should they appear?
 ;     + either at start of new level (delayed?)
-;     ? or fruits appear when power pill gets eaten (disapear at next level)
-;   ? when shoud fruits disappear
+;     ? or bonuses appear when power-up gets eaten (disapear at next level)
+;   ? when shoud bonuses disappear
 ;     ? disappear at border
-;     ? when power pill gets eaten
+;     ? when power-up gets eaten
 ;     + when level is finished
-;     ? never (when eaten or new fruit appears)
-; ? larger power pill
+;     ? never (when eaten or new bonus appears)
+; ? larger power-up
 ; ? flicker all 3 objects, or only enemy and bonus?
 ; - display
 ;   - score
 ;   - level
-; ? flicker Player and Enemies when Fruit arrives (player is never over a pellet)
+; ? flicker Player and Enemies when Bonus arrives (player is never over a pellet)
 ; ? pellets, wafers, dots...?
-; - running ghosts graphics/colors
+; + running enemies graphics/colors
+; ? wider enemies?
 
 
 ;===============================================================================
@@ -62,6 +67,7 @@ DEBUG           = 1
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey
 PLUSROM         = 0 ; (-~50)
 RAND16          = 0 ; (-3) 16-bit random values
+COLOR_LINES     = 1 ; (-~20) use different colors for the lines between players
 
 
 ;===============================================================================
@@ -78,8 +84,8 @@ LINE_COL        = BLUE|6
 EOR_RND         = $bd           ; %10110100 ($9c, $b4, $bd, $ca, $eb, $fc)
 
 SCW             = 160
-WAFER_H         = 2
-PILL_H          = 6
+PELLET_H        = 2
+POWER_H         = 6
 NUM_PLAYERS     = 8
 
 POWER_TIM       = 120
@@ -94,6 +100,10 @@ DIFF_PL_SPEED   = 4
 MAX_PL_SPEED    = 160
 ;INIT_EN_SPEED   = INIT_PL_SPEED-10  ; TODO
 ;DIFF_EN_SPEED   = 5                 ; TODO
+
+PELLET_PTS      = 1
+POWER_PTS       = 5
+ENEMY_PTS       = 10
 
 STACK_SIZE      = 6         ; used in kernel row setup
 
@@ -127,7 +137,7 @@ enemyStates     .byte       ; 0 = alive, 1 = eyes
 xPlayerLst      ds  NUM_PLAYERS             ; 32 bytes
 xEnemyLst       ds  NUM_PLAYERS
 xBonusLst       ds  NUM_PLAYERS
-xPillLst        ds  NUM_PLAYERS
+xPowerLst       ds  NUM_PLAYERS
 ;---------------------------------------
 pfLst           ds  NUM_PLAYERS*3           ; 24 bytes
 pf01LeftLst     = pfLst
@@ -324,9 +334,9 @@ PfMask
     .byte   %11111101, %11110111, %11011111, %01111111
 
 ; Bonus Scores:
-; Dot           10    1
-; Power-Pill    50    2         TODO
-; Enemy         100   5         TODO
+; Pellet        10    1
+; Power-Up      50    2
+; Enemy         100   5
 ; Cherry        100   10
 ; Strawberry    300   20
 ; Orange        500   30        (aka Peach, Yellow Apple)
@@ -362,7 +372,7 @@ PlayerPtr
 ;    CHECKPAGE EnemyPtr ;
 
 PlayerCol
-    .byte   BEIGE|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+    .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
     .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
     CHECKPAGE PlayerCol
 EnemyColPtr
@@ -370,7 +380,15 @@ EnemyColPtr
     .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
     CHECKPAGE EnemyColPtr
 
+  IF COLOR_LINES
+LineCols
+    .byte   BLACK|$8, CYAN_GREEN|$8, PURPLE|$8, ORANGE|$8
+    .byte   GREEN_YELLOW|$8, BLUE_CYAN|$8, MAUVE|$8, YELLOW|$8, WHITE
+
+    ds  10, 0
+  ELSE
     ds  20, 0
+  ENDIF
 
 ;---------------------------------------------------------------
 DrawScreen SUBROUTINE
@@ -407,7 +425,11 @@ DrawScreen SUBROUTINE
 ;---------------------------------------
     sty     GRP1                ; 3         Y == 0!
 ; draw lines between players:
+  IF COLOR_LINES
+    SLEEP   17-2
+  ELSE
     SLEEP   17
+  ENDIF
 
 X_OFS   = 48
 ; prepare player:               ; 3         @20!
@@ -432,10 +454,14 @@ BranchBonus
     pha                         ; 3         x-pos
     lda     #1                  ; 2
     pha                         ; 3         index
+  IF COLOR_LINES
+    lda     LineCols+1,x
+  ELSE
     lda     #LINE_COL           ; 2
+  ENDIF
     pha                         ; 3 = 13    color
-; prepare power pill (not drawn from stack):
-    lda     xPillLst,x          ; 4         x-pos
+; prepare power-up (not drawn from stack):
+    lda     xPowerLst,x         ; 4         x-pos
     ldx     #4                  ; 2 =  6    index
 ;---------------------------------------
     ldy     #0                  ; 2         color   @01
@@ -496,10 +522,15 @@ EnterBranch
   ENDIF
     bcs     .next               ; 4/2= 4/2  we need 4 cycles here!
 .exit                           ;           @02/04
-    lda     #LINE_COL           ; 2
-    sta     COLUBK              ; 3
     ldx     #$ff                ; 2
-    txs                         ; 2 = 11/13
+    txs                         ; 2
+  IF COLOR_LINES
+    ldx     .loopCnt            ; 3
+    lda     LineCols,x           ; 4
+  ELSE
+    lda     #LINE_COL           ; 2
+  ENDIF
+    sta     COLUBK              ; 3 = 11/13 (+2)
 ;--------------------------------------------------------------
 TIM_1A
 ; setup sprite pointers:                    @11/13
@@ -509,7 +540,9 @@ TIM_1A
     lda     PlayerPtr,y         ; 4
     sta     .ptr0               ; 3 = 14
 ; setup player sprite direction:
+  IF !COLOR_LINES
     ldx     .loopCnt            ; 3
+  ENDIF
     ldy     #8-1                ; 2
     lda     playerDirs          ; 3
     and     Pot2Bit,x           ; 4
@@ -520,18 +553,19 @@ TIM_1A
     lda     PlayerCol,x         ; 4
     sta     .color0             ; 3 =  7
 
-; setup power pill pointer:
+; setup power-up pointer:
     ldy     #<EnaBlTbl          ; 2
-    lda     xPillLst,x          ; 4
-    bne     .showPill           ; 2/3
+    lda     xPowerLst,x         ; 4
+    bne     .showPower          ; 2/3
     ldy     #<DisBlTbl          ; 2
-.showPill
+.showPower
     sty     .ptrBl              ; 3
 TIM_1B
     sta     WSYNC               ; 3 = 15/16 @62..66
 ;---------------------------------------
     sta     HMOVE               ; 3
     lda     #0                  ; 2
+;    lda     LineCols,x
     sta     COLUBK              ; 3 =  8
 
     bit     .bonusFlag          ; 3
@@ -629,7 +663,7 @@ TIM_1B
     lda     PfColTbl,y          ; 4
     sta     COLUPF              ; 3 = 21
     dey                         ; 2
-    cpy     #(GFX_H+WAFER_H)/2  ; 2
+    cpy     #(GFX_H+PELLET_H)/2 ; 2
     bcs     .loopTop            ; 3/2= 7/6
     SLEEP   28                  ;28
     ldx     .loopCnt            ; 3 = 31    @58!
@@ -738,7 +772,11 @@ TIM_1B
 ;---------------------------------------
     sty     GRP1                ;           Y = 0
 ; draw bottom lines:
+  IF COLOR_LINES
+    lda     #BLACK|$8
+  ELSE
     lda     #LINE_COL
+  ENDIF
     sta     WSYNC
 ;---------------------------------------
     sta     WSYNC
@@ -747,6 +785,9 @@ TIM_1B
     sta     WSYNC
 ;---------------------------------------
     sty     COLUBK
+  IF COLOR_LINES
+    lda     #WHITE
+  ENDIF
     sta     WSYNC
 ;---------------------------------------
     sta     COLUBK
@@ -939,7 +980,7 @@ VerticalBlank SUBROUTINE
 .setXBonus
     sta     xBonusLst,x
 .skipBonus
-; update power pill timer:
+; update power-up timer:
     lda     powerTimLst,x
     beq     .skipTim
     sec
@@ -1012,7 +1053,7 @@ DEBUG1
     lda     enemyStates
     and     Pot2Bit,x       ; already dead?
     bne     .skipCXSprite   ;  yes, skip
-    lda     #5
+    lda     #ENEMY_PTS
     jsr     AddScoreLo
     lda     enemyStates
     ora     Pot2Bit,x       ; -> eyes
@@ -1027,7 +1068,7 @@ DEBUG1
     and     Pot2Mask,x
 .setEnemyDir
     sta     enemyDirs
-    lda     #0              ; disable power pill
+    lda     #0              ; disable power-up
     sta     powerTimLst,x
 .skipCXSprite
     asl     cxPelletBits
@@ -1051,24 +1092,24 @@ DEBUG1
     beq     .skipCXPellet
     sty     .xPos
     ldx     .loopCnt
-    lda     #1              ; levelLst,x ?
-    jsr     AddScoreLo
-; check if pill got eaten:
-    lda     xPillLst,x
+; check if power-up got eaten:
+    lda     xPowerLst,x
     sec
     sbc     #6
     lsr
     lsr
     lsr
     eor     .xPos
-    bne     .pillOK
-    sta     xPillLst,x
+    bne     .noPower
+    sta     xPowerLst,x
     lda     #POWER_TIM      ; TODO: base timer on game speed
     sta     powerTimLst,x
-;    lda     #0
-;    ldy     levelLst,x
-;    jsr     AddScore
-.pillOK
+    lda     #POWER_PTS
+    NOP_W
+.noPower
+    lda     #PELLET_PTS     ; levelLst,x ?
+    jsr     AddScoreLo
+
 ; check if all pellets cleared:
     lda     pf01LeftLst,x
     ora     pf20MiddleLst,x
@@ -1135,7 +1176,7 @@ GameInit SUBROUTINE
     ldx     #NUM_PLAYERS-1
 .loopPf
     jsr     ResetLine
-    lda     #SCW*1/2-16     ; at right of left pills
+    lda     #SCW*1/2-16     ; at right of left power-ups
     sta     xPlayerLst,x
     lda     #SCW-8          ; right border
     sta     xEnemyLst,x
@@ -1178,7 +1219,7 @@ ResetLine SUBROUTINE
     sta     pf20MiddleLst,x
     lda     #$ff
     sta     pf12RightLst,x
-; position new pill:
+; position new power-up:
     jsr     NextRandom
     and     #$78
     cmp     #64
@@ -1188,7 +1229,7 @@ ResetLine SUBROUTINE
 ; @pellet 0..7, 12..19
 ;    clc
     adc     #6
-    sta     xPillLst,x
+    sta     xPowerLst,x
     rts
 
 ;---------------------------------------------------------------
@@ -1397,17 +1438,17 @@ HMoveTbl
 
     .byte   "JTZ"
 
-PfColTbl = . - (GFX_H-PILL_H)/2
-PillStart
+PfColTbl = . - (GFX_H-POWER_H)/2
+PowerStart
     .byte   0       ; = $08
     .byte   0
     .byte   $08
     .byte   $0c
     .byte   $04
     .byte   $0e
-PILL_H = . - PillStart
-;    ds      (GFX_H-PILL_H)/2, 0        ; ball disabled anyway
-    CHECKPAGE (. + (GFX_H-PILL_H/2))    ; but still must not cross a page!
+POWER_H = . - PowerStart
+;    ds      (GFX_H-POWER_H)/2, 0        ; ball disabled anyway
+    CHECKPAGE (. + (GFX_H-POWER_H/2))    ; but still must not cross a page!
 
 ;BcdTbl
 ;    .byte $00, $06, $12, $18, $24, $30, $36
@@ -1528,8 +1569,8 @@ EnemyDarkGfx0
     .byte   %01010101
     .byte   %01010101
     .byte   %01111111
+    .byte   %00101010
     .byte   %01010101
-    .byte   %01101011
     .byte   %01111111
     .byte   %01111111
     .byte   %01101011
@@ -1543,8 +1584,8 @@ EnemyDarkGfx1
     .byte   %00101010
     .byte   %01010101
     .byte   %01111111
+    .byte   %00101010
     .byte   %01010101
-    .byte   %01101011
     .byte   %01111111
     .byte   %01111111
     .byte   %01101011
@@ -1650,7 +1691,7 @@ BananaGfx
     .byte   %01111100
     .byte   %01111110
     .byte   %00011110
-    .byte   %00001110
+    .byte   %00001111
     .byte   %00000111
     .byte   %00000111
     .byte   %00000011
@@ -1695,12 +1736,12 @@ PearGfx
 ;    ds      GFX_H,0
 
 EnaBlTbl
-    ds      (GFX_H-PILL_H)/2, 0
+    ds      (GFX_H-POWER_H)/2, 0
 ;    ds      1, %10
 ;    ds      4, 0
     ds      6, %10
-;    ds      PILL_H, %10
-;    ds      (GFX_H-PILL_H)/2, 0
+;    ds      POWER_H, %10
+;    ds      (GFX_H-POWER_H)/2, 0
 DisBlTbl
     ds      GFX_H, 0
     CHECKPAGE SpriteGfx
