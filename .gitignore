@@ -1,0 +1,9 @@
+*.bin
+*.bat
+*.lst
+*.sym
+*.zip
+*.jpg
+*.png
+*.exe
+_old/*.*
