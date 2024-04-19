@@ -47,11 +47,6 @@
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
 ; - dead player graphics
-; o in AI row, grey
-;   + ghosts, blink, eyes
-;   + bonus
-;   - lines
-;   ? pellets & power pill
 
 ; DONEs:
 ; o difficulty ramp up
@@ -73,6 +68,11 @@
 ; + running enemies graphics/colors
 ; + align collecting animation with pellets (sync animation with position)
 ; + delay ghost/bonus collisions (at least 50% overlapping)
+; + in AI row, dark/grey...
+;   + ghost, blink, eyes
+;   + bonus
+;   + lines
+;   x pellets & power pill
 
 
 ;===============================================================================
@@ -97,8 +97,9 @@ SAVEKEY         = 0 ; (-~220) support high scores on SaveKey
 PLUSROM         = 0 ; (-~50)
 RAND16          = 0 ; (-3) 16-bit random values
 COLOR_LINES     = 1 ; (-~20) use different colors for the lines between players
-EXTRA_GAP       = 1 ; (-4) one extra line between rows
+FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
 TOP_SCORE       = 1 ; (-41) display top score (else player who last changed level)
+LARGE_POWER     = 1
 
 
 ;===============================================================================
@@ -119,7 +120,7 @@ PELLET_H        = 2
 POWER_H         = 6
 NUM_PLAYERS     = 8
 
-POWER_TIM       = 120
+POWER_TIM       = 140
 
 NUM_BONUS       = 8
 X_BONUS_OFF     = $ff
@@ -383,11 +384,16 @@ PlayerPtr
     .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx2, <PlayerGfx2
     .byte   <PlayerGfx1 ; one extra for left moving
     CHECKPAGE PlayerPtr
-PlayerCol
+PlayerCol ; align LineCols!
+  IF NTSC_COL
+    .byte   BROWN|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
+;    .byte   GREEN_YELLOW|$f, CYAN|$f, VIOLET|$f, BROWN|$f
+;    .byte   GREEN|$f, BLUE|$f, RED|$f, YELLOW|$f
+  ELSE
     .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
     .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
-;    .byte   BLACK|$f, CYAN|$f, VIOLET|$f, BROWN|$f
-;    .byte   GREEN|$f, BLUE|$f, RED|$f, YELLOW|$f
+  ENDIF
     CHECKPAGE PlayerCol
 
 ;EnemyPtr
@@ -498,26 +504,26 @@ DrawScreen SUBROUTINE
     sta     GRP0                ; 3 = 11
     dey                         ; 2
     bpl     .loopScore          ; 3/2= 5/4
-    iny
-    sty     GRP1
-    sty     GRP0
-    sty     GRP1
-    sty     NUSIZ0
-    sty     NUSIZ1
-    sty     VDELP1
-    sty     GRP1
+    iny                         ; 2
+    sty     GRP1                ; 3
+    sty     GRP0                ; 3
+    sty     GRP1                ; 3
+    sty     NUSIZ0              ; 3
+    sty     NUSIZ1              ; 3
+    sty     VDELP1              ; 3
+    sty     GRP1                ; 3
     ldx     #$ff                ; 2
-    txs                         ; 2
+    txs                         ; 2 = 27
 ;---------------------------------------------------------------
 .loopCnt    = tmpVars
 .color0     = .loopCnt
 .bonusFlag  = tmpVars+1
-.ptrCol0    = tmpVars+2
-.ptrCol1    = tmpVars+4
-.ptr0       = tmpVars+6         ; used as stack by lines drawing
-.ptr1       = tmpVars+8         ;   same
-.enaBl      = tmpVars+10        ;   same
-;.color1     = tmpVars+11
+.lineCol    = tmpVars+2
+.ptrCol0    = tmpVars+3
+.ptrCol1    = tmpVars+5
+.ptr0       = tmpVars+7         ; used as stack by lines drawing
+.ptr1       = tmpVars+9         ;   same
+.enaBl      = tmpVars+11        ;   same
 
     lda     frameCnt            ; 3
     lsr                         ; 2
@@ -527,21 +533,35 @@ DrawScreen SUBROUTINE
 ; TODO?: use for levelLst,x >> 2, and #$07
 
     lda     #>ColorTbls
-    sta     .ptrCol1+1
     sta     .ptrCol0+1
+
+  IF FRAME_LINES
+    lda     WHITE
+  ELSE
+    lda     #0
+  ENDIF
+    sta     .lineCol
 
     ldx     #NUM_PLAYERS-1
 .loopKernels                    ;           @65
     stx     .loopCnt            ; 3
-    sta     CXCLR               ; 3
-    sta     WSYNC               ; 3 =  9    @74
+    lda     Pot2Bit,x           ; 4
+    sta     WSYNC               ; 3 =  6    @71
 ;---------------------------------------
     sty     GRP1                ; 3         Y == 0!
-; draw lines between players:
+; *** draw lines between players ***
+; setup player sprite direction:
+    ldy     #8                  ; 2
+    and     playerDirs          ; 3
+    beq     .right0             ; 2/3
+    NOP_B                       ; 1
+.right0
+    dey                         ; 2
+    sty     REFP0               ; 3 = 13
   IF COLOR_LINES
-    SLEEP   17-2
+    SLEEP   17-1-13
   ELSE
-    SLEEP   17
+    SLEEP   17-13
   ENDIF
 X_OFS   = 48
 ; prepare player:               ; 3         @20!
@@ -567,7 +587,7 @@ LinesBranches
     lda     #1                  ; 2
     pha                         ; 3         index
   IF COLOR_LINES
-    lda     LineCols+1,x        ; 4
+    lda     .lineCol            ; 3
   ELSE
     lda     #LINE_COL           ; 2
   ENDIF
@@ -632,22 +652,35 @@ LinesBranches
   ENDIF
     bcs     .next               ; 4/2= 4/2  we need 4 cycles here!
 .exit                           ;           @02/04, CF == 0
+TIM_0a
     ldx     .loopCnt            ; 3
     txs                         ; 2         store .loopCnt in SP
+; setup player color pointer:
+    ldy     #<HumanColMask      ; 2
+    lda     playerHumans        ; 3
+    and     Pot2Bit,x           ; 4
   IF COLOR_LINES
+    cmp     #1                  ; 2         also sets AI state
     lda     LineCols,x          ; 4
-  ELSE
+    bcc     .brightLine         ; 2/3
+    ldy     #<AIColMask         ; 2
+    eor     #LINE_LUM ^ $02     ; 2         -> lum == 2
+.brightLine                     ;
+    sta     .lineCol            ;   = 21/24
+  ELSE ;{
+    beq     .setPtrCol0         ; 2/3
+    ldy     #<AIColMask         ; 2
+    sec                         ; 2         remember AI state
+.setPtrCol0                     ;   = 12/15
     lda     #LINE_COL           ; 2
-  ENDIF
-  IF EXTRA_GAP
+  ENDIF ;}
+    sty     .ptrCol0            ; 3 =  3
+TIM_0b  ; 61..65 (+3) cycles
     sta     WSYNC
 ;---------------------------------------
-; TODO: extra gap required?
-  ENDIF
-    sta     COLUBK              ; 3 = 3|7/9|12/14
-;--------------------------------------------------------------
-TIM_1a
-; setup sprite pointers:
+    sta     COLUBK              ; 3 =  3
+;TIM_1a ; timers have problems with preceding WSYNCs!
+; setup player sprite pointer:
     lda     PlayerCol,x         ; 4
     sta     .color0             ; 3
     lda     xPlayerLst,x        ; 4         animate in sync with position (= speed based)
@@ -660,36 +693,39 @@ TIM_1a
 .playerLeft
     lda     PlayerPtr,y         ; 4
     sta     .ptr0               ; 3 = 32/33
-; setup player sprite direction:
-    ldy     #8-1                ; 2
-    lda     playerDirs          ; 3
-    and     Pot2Bit,x           ; 4
-    beq     .right0             ; 2/3
-    iny                         ; 2
-.right0
-    sty     REFP0               ; 3 = 15/16
-; setup player colors:
-    ldy     #<HumanColMask      ; 2
-    lda     playerHumans        ; 3
-    and     Pot2Bit,x           ; 4
-    beq     .setPtrCol0         ; 2/3
-    ldy     #<AIColMask         ; 2
-    sec                         ; 2
-.setPtrCol0                     ;   = 12/15
-    sty     .ptrCol0            ; 3
-    lda     #0                  ; 2
-    sta     WSYNC               ; 3 =  8
-; free cycles:
-;---------------------------------------
-    sta     HMOVE               ; 3
-    sta     COLUBK              ; 3 =  6
+
+;; setup player sprite direction:
+;    ldy     #8-1                ; 2
+;    lda     playerDirs          ; 3
+;    and     Pot2Bit,x           ; 4
+;    beq     .right0             ; 2/3
+;    iny                         ; 2
+;.right0
+;    sty     REFP0               ; 3 = 15/16 ;
+;; constant timing code:
+;    ldy     #7                  ; 2
+;    lda     playerDirs          ; 3
+;    and     Pot2Bit,x           ; 4
+;    beq     .right0             ; 2/3
+;    NOP_B                       ; 1
+;.right0
+;    iny                         ; 2
+;    sty     REFP0               ; 3 = 17
+
 ; setup power-up pointer:
     ldy     #2                  ; 2
+TIM_1b  ; 17..18 (+6) cycles
+    sta     WSYNC               ; 3 =  5
+;---------------------------------------
+    sta     HMOVE               ; 3
+TIM_2a
+    lda     #0                  ; 2
+    sta     COLUBK              ; 3
     lda     xPowerLst,x         ; 4
     bne     .showPower          ; 2/3
     dey                         ; 2
-.showPower
-    sty     .enaBl              ; 3 = 12/13
+.showPower                      ;   =  9/10
+    sty     .enaBl              ; 3 =  9
 ; draw enemy or bonus:
     bit     .bonusFlag          ; 3
     bmi     .drawEnemy          ; 2/3
@@ -712,46 +748,19 @@ TIM_1a
     lda     #<GreyCol           ; 2
 .setColPtr1B
     sta     .ptrCol1            ; 3
-    ldy     #0                  ; 2
-    sta     WSYNC               ; 3 = 23
-;---------------------------------------
+    ldy     #0                  ; 2 = 20
     beq     .setRefP1           ; 3 =  3
 
-.drawEyes                       ;           @43
+.drawEyes                       ;           @45
     ldy     #<GreyCol           ; 2
     bcs     .setColPtr1Eyes     ; 2/3       AI row
     ldy     #<EnemyEyesCol      ; 2
 .setColPtr1Eyes
     sty     .ptrCol1            ; 3
     ldy     #<EnemyEyesGfx      ; 2
-    bne     .contEyes           ; 3
-
-.powerOff                       ;           @49
-; AI row?
-    ldy     #<GreyCol           ; 2
-    bcs     .setPtrCol1         ; 2/3       AI row
-    ldy     EnemyColPtr,x       ; 4
-.setPtrCol1
-    sty     .ptrCol1            ; 3 = 8/11
-    ldy     #<EnemyGfx0         ; 2
-    lda     xEnemyLst,x         ; 4
-    and     #$04                ; 2
-    bne     .contEyes           ; 2/3
-    ldy     #<EnemyGfx1         ; 2
-.contEyes
-    sta     WSYNC               ; 3 = 15    @72/75
-;---------------------------------------
     bne     .setPtr1            ; 3
 
-.drawEnemy                      ;           @33
-TIM_2a
-    lda     Pot2Bit,x           ; 4
-    bit     enemyStates         ; 3
-    bne     .drawEyes           ; 2/3= 9/10
-; setup colors:
-    lda     powerTimLst,x       ; 4
-    beq     .powerOff           ; 2/3= 6/7
-; power on:                     ;           @48
+.powerOn                        ;           @51
     ldy     #<GreyCol           ; 2
     bcs     .setColPtr1x        ; 2/3       AI row
     ldy     #<EnemyColDark      ; 2
@@ -761,20 +770,35 @@ TIM_2a
     bne     .setColPtr1x        ; 2/3
     ldy     #<EnemyColBlink     ; 2
 .setColPtr1x                    ;
-    sty     .ptrCol1            ; 3 = 5..19 @53..67
-TIM_2b
-    sta     WSYNC               ; 3 =  3    @..70
-; free cycles: 2
-;---------------------------------------
-; setup graphics:
+    sty     .ptrCol1            ; 3 = 5..19 @56..70
     ldy     #<EnemyDarkGfx0     ; 2
+; setup graphics:
     lda     xEnemyLst,x         ; 4             animate in sync with position (= speed based)
-;    lda     frameCnt            ; 3
     and     #$04                ; 2
     bne     .setPtr1            ; 2/3
     ldy     #<EnemyDarkGfx1     ; 2
+    bne     .setPtr1            ; 3 = 13
+
+.drawEnemy                      ;
+    lda     Pot2Bit,x           ; 4
+    bit     enemyStates         ; 3
+    bne     .drawEyes           ; 2/3= 9/10
+; setup colors:
+    lda     powerTimLst,x       ; 4
+    bne     .powerOn            ; 2/3= 6/7
+; power off:                    ;
+    ldy     #<GreyCol           ; 2
+    bcs     .setPtrCol1         ; 2/3       AI row
+    ldy     EnemyColPtr,x       ; 4
+.setPtrCol1
+    sty     .ptrCol1            ; 3 = 8/11
+    ldy     #<EnemyGfx0         ; 2
+    lda     xEnemyLst,x         ; 4
+    and     #$04                ; 2
+    bne     .setPtr1            ; 2/3
+    ldy     #<EnemyGfx1         ; 2
 .setPtr1
-    sty     .ptr1               ; 3 = 6..15
+    sty     .ptr1               ; 3 =  3
 ; setup enemy reflection:
     ldy     #8-1                ; 2
     lda     enemyDirs           ; 3
@@ -782,13 +806,15 @@ TIM_2b
     beq     .setRefP1           ; 2/3
     iny                         ; 2         moving left
 .setRefP1
-    sty     REFP1               ; 3 = 15/16
+    sty     REFP1               ; 3 = 14
 ; setup some high-pointer:
     lda     #>SpriteGfx         ; 2
     sta     .ptr0+1             ; 3
     sta     .ptr1+1             ; 3
-    ldy     #GFX_H-1            ; 2 = 10
-.loopTop                        ;           @42/28
+    lda     #>ColorTbls         ; 2
+    sta     .ptrCol1+1          ; 3
+    ldy     #GFX_H-1            ; 2 = 15
+.loopTop                        ;
     lda     (.ptr0),y           ; 5
     sta     GRP0                ; 3         VDELed!
     lda     EnaBlTbl,y          ; 4
@@ -797,8 +823,8 @@ TIM_2b
     lax     (.ptrCol1),y        ; 5         overwrites X!
     lda     .color0             ; 3
     and     (.ptrCol0),y        ; 5
+TIM_2b ; 108..145 (+6) cycles
     sta     WSYNC               ; 3 = 34
-; free cycles: 0
 ;---------------------------------------
     sta     COLUP0              ; 3
     stx     COLUP1              ; 3
@@ -809,7 +835,8 @@ TIM_2b
     dey                         ; 2
     cpy     #(GFX_H+PELLET_H)/2 ; 2
     bcs     .loopTop            ; 3/2=7/6
-    SLEEP   29                  ;29
+    SLEEP   26                  ;26
+    sta     CXCLR               ; 3         early enough
     tsx                         ; 2 = 31    SP = .loopCnt
 ; 1st pellet line:              ;           @58!
     lda     (.ptr0),y           ; 5
@@ -873,7 +900,6 @@ TIM_2b
 ;    sta     COLUP0              ; 3 =  3    @02         currently same as above!
     SLEEP   8
     lda     (.ptrCol1),y        ; 5
-;  sbc   #4
     sta     COLUP1              ; 3         @10
     stx     GRP1                ; 3 = 11    @13
     lda     #$02                ; 2
@@ -925,7 +951,7 @@ TIM_2b
     sty     GRP1                ;           Y = 0
 ; draw bottom lines:
   IF COLOR_LINES
-    lda     #BLACK|$8
+    lda     .lineCol
   ELSE
     lda     #LINE_COL
   ENDIF
@@ -934,22 +960,22 @@ TIM_2b
     sta     WSYNC
 ;---------------------------------------
     sta     COLUBK
-    sta     WSYNC
-;---------------------------------------
-    sty     COLUBK
-  IF EXTRA_GAP
-    sta     WSYNC
-  ENDIF
-  IF COLOR_LINES
-    lda     #WHITE
-  ENDIF
-    sta     WSYNC
-;---------------------------------------
-    sta     COLUBK
     ldx     #2
     sta     WSYNC
 ;---------------------------------------
     sty     COLUBK
+  IF FRAME_LINES
+    sta     WSYNC
+   IF COLOR_LINES
+    lda     #WHITE
+   ENDIF
+    sta     WSYNC
+;---------------------------------------
+    sta     COLUBK
+    sta     WSYNC
+;---------------------------------------
+    sty     COLUBK
+  ENDIF
     stx     VBLANK
     jmp     ContDrawScreen
 ; /DrawScreen
@@ -1438,7 +1464,11 @@ OverScan SUBROUTINE
 ; check if power-up got eaten:
     lda     xPowerLst,x
     sec
+  IF LARGE_POWER
+    sbc     #6-1
+  ELSE
     sbc     #6
+  ENDIF
     lsr
     lsr
     lsr
@@ -1523,7 +1553,11 @@ OverScan SUBROUTINE
 ;---------------------------------------------------------------
 GameInit SUBROUTINE
 ;---------------------------------------------------------------
+  IF LARGE_POWER
+    lda     #%100000
+  ELSE
     lda     #%010000
+  ENDIF
     sta     CTRLPF
 
     ldx     #NUM_RESETS-1
@@ -1553,14 +1587,22 @@ GameInit SUBROUTINE
 
 ; random initial directions:
     jsr     NextRandom
+    sta     playerDirs
+; 1 or 2 randomly disabled players:
+    jsr     NextRandom
+    and     #7
+    tax
+    jsr     NextRandom
+    and     #7
+    tay
+    lda     Pot2Bit,x
+    ora     Pot2Bit,y
     sta     playerHumans
 ;    sta     playerStates
 ;    sta     enemyStates
-    jsr     NextRandom
-    sta     playerDirs
+
     lda     #INIT_PL_SPEED
     sta     playerSpeed
-;    lsr
     lda     #INIT_EN_SPEED
     sta     enemySpeed
     sta     bonusSpeed
@@ -1607,7 +1649,11 @@ ResetLine SUBROUTINE
 .left
 ; @pellet 0..7, 12..19
 ;    clc
+  IF LARGE_POWER
+    adc     #6-1
+  ELSE
     adc     #6
+  ENDIF
     sta     xPowerLst,x
     rts
 
@@ -1664,11 +1710,16 @@ NextRandom SUBROUTINE
     ALIGN_FREE_LBL 256, "Rom-Tables"
 
   IF COLOR_LINES
+LINE_LUM    = $a
 LineCols
-    .byte   BLACK|$8, CYAN_GREEN|$8, PURPLE|$8, ORANGE|$8
-    .byte   GREEN_YELLOW|$8, BLUE_CYAN|$8, MAUVE|$8, YELLOW|$8, WHITE
-    CHECKPAGE LineCols
+  IF NTSC_COL
+    .byte   BROWN|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
+    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
+  ELSE
+    .byte   WHITE|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
+    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
   ENDIF
+    CHECKPAGE LineCols
 
 Pot2Mask
     .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80

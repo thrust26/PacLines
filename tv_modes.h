@@ -43,7 +43,7 @@ BLACK           = $00
 WHITE           = $0e
   IF NTSC_COL               ;
 YELLOW          = $10       ;   0   CYAN        0
-BROWN           = $20       ;                   4
+BROWN           = $20       ;   7               4
 ORANGE          = $30       ;*  4   CYAN
 RED             = $40       ;*                  1
 MAUVE           = $50       ;*  1   ORANGE
@@ -56,7 +56,7 @@ CYAN_GREEN      = $b0       ;   6   RED
 GREEN           = $c0       ;                   3
 GREEN_YELLOW    = $d0       ;   3   MAUVE
 GREEN_BEIGE     = $e0       ;                   7
-BEIGE           = $f0       ;   7   MAUVE
+BEIGE           = $f0       ;       MAUVE
   ELSE                      ;
 YELLOW          = $20       ;   0
 BROWN           = YELLOW    ;
@@ -72,7 +72,7 @@ CYAN_GREEN      = $70       ;   6
 GREEN           = $50       ;
 GREEN_YELLOW    = $30       ;   3
 GREEN_BEIGE     = GREEN_YELLOW
-BEIGE           = YELLOW    ;   7
+BEIGE           = YELLOW    ;   ???
   ENDIF
 
     LIST ON
