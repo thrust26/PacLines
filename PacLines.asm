@@ -47,6 +47,13 @@
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
 ; - dead player graphics
+; - alternative theme
+;   ? robots
+;   ? animals
+;   ? spaceships
+;   ? cars (police?)
+;   ? abstract
+;   ?
 
 ; DONEs:
 ; o difficulty ramp up
@@ -57,6 +64,16 @@
 ;     + hunting: move to player (no wrapping)
 ;     + running: move to side away from player
 ;     + dead   : move to far away side
+;     + follow further to the left
+;   - AI players
+;     - reverse direction if ghost comes too close:
+;       dist to border opposite of enemy/player speed < dist of ghost/enemy speed
+;       (dP/sP < dE/sE => dP*sE < dE*sP)
+;     - simplyfied: reverse at 8 - dist enemy from its border
+;       enemy = 0
+;       enemy = 1
+;       enemy = 2
+;     - move to middle pellets after power pill
 ; o display
 ;   o score
 ;     + color gradients
@@ -73,6 +90,11 @@
 ;   + bonus
 ;   + lines
 ;   x pellets & power pill
+; - controls
+;   - dectect QuadTari
+;   - start game
+;   - active player
+;   - reverse direction
 
 
 ;===============================================================================
@@ -96,17 +118,18 @@ DEBUG           = 1
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey
 PLUSROM         = 0 ; (-~50)
 RAND16          = 0 ; (-3) 16-bit random values
-COLOR_LINES     = 1 ; (-~20) use different colors for the lines between players
 FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
 TOP_SCORE       = 1 ; (-41) display top score (else player who last changed level)
 LARGE_POWER     = 1
+THEME_0         = 1
+THEME_1         = 0
+THEME_2         = 0
+THEME_3         = 0
 
 
 ;===============================================================================
 ; C O L O R - C O N S T A N T S
 ;===============================================================================
-
-LINE_COL        = BLUE|6        ; !COLOR_LINES
 
 
 ;===============================================================================
@@ -118,6 +141,8 @@ EOR_RND         = $bd           ; %10110100 ($9c, $b4, $bd, $ca, $eb, $fc)
 SCW             = 160
 PELLET_H        = 2
 POWER_H         = 6
+SPRITE_W        = 8
+
 NUM_PLAYERS     = 8
 
 POWER_TIM       = 140
@@ -155,6 +180,18 @@ PELLET_PTS      = 1
 POWER_PTS       = 5
 ENEMY_PTS       = 10
 
+; gameState constants:
+QT_LEFT         = $20               ; bit 5==0: left QuadTari; bit 4==1: right QuadTari
+QT_RIGHT        = $10
+QT_MASK         = QT_LEFT|QT_RIGHT
+GAME_START      = $40
+GAME_RUNNING    = $80
+
+; 01 = game start, select active players
+; 10 = game running
+; 00 = Game over, display scores of human players
+
+
 NUM_TMPS        = 6
 STACK_SIZE      = 6                 ; used in score & kernel row setup
 
@@ -171,6 +208,8 @@ randomLo        .byte
   IF RAND16 ;{
 randomHi        .byte
   ENDIF ;}
+gameState       .byte       ; rL......      Right/Left QuadTari
+buttonBits      .byte
 ;---------------------------------------
 levelLst        ds  NUM_PLAYERS
 ;---------------------------------------
@@ -189,7 +228,7 @@ playerSpeed     .byte
 playerSpeedSum  .byte
 enemySpeed      .byte
 enemySpeedSum   .byte
-bonusSpeed      .byte       ; TODO: eliminate if bonus speed is always 50% of enemy speed
+bonusSpeed      = enemySpeed                ; TODO: eliminate if bonus speed is always 50% of enemy speed
 bonusSpeedSum   .byte
 ;---------------------------------------
 playerDirs      .byte       ; 1 = left, 0 = right
@@ -227,7 +266,7 @@ DEBUG_BYTES SET 0
   MAC DEBUG_BRK
     IF DEBUG
 DEBUG_BYTES SET DEBUG_BYTES + 1
-      brk                         ;
+      brk
     ENDIF
   ENDM
 
@@ -242,14 +281,6 @@ DEBUG_BYTES SET DEBUG_BYTES + 1
   MAC NOP_W     ; skip 2 bytes, 4 cycles
     .byte   $0c
   ENDM
-
-;  MAC BIT_B     ; skip 1 byte, 3 cycles
-;    .byte   $24
-;  ENDM
-;
-;  MAC BIT_W     ; skip 2 bytes, 4 cycles
-;    .byte   $2c
-;  ENDM
 
   MAC SLEEP
     IF {1} = 1
@@ -380,9 +411,22 @@ FREE_TOTAL SET FREE_TOTAL + FREE_GAP$
     ORG     BASE_ADR
 
 PlayerPtr
+  IF THEME_0
     .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx0, <PlayerGfx0
     .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx2, <PlayerGfx2
     .byte   <PlayerGfx1 ; one extra for left moving
+  ENDIF
+  IF THEME_1
+    .byte   <PlayerGfx3, <PlayerGfx3, <PlayerGfx2, <PlayerGfx2
+    .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx0, <PlayerGfx0
+    .byte   <PlayerGfx3
+  ENDIF
+  IF THEME_2 | THEME_3
+    .byte   <PlayerGfx3, <PlayerGfx3, <PlayerGfx2, <PlayerGfx2
+    .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx0, <PlayerGfx0
+    .byte   <PlayerGfx3
+  ENDIF
+
     CHECKPAGE PlayerPtr
 PlayerCol ; align LineCols!
   IF NTSC_COL
@@ -536,7 +580,7 @@ DrawScreen SUBROUTINE
     sta     .ptrCol0+1
 
   IF FRAME_LINES
-    lda     WHITE
+    lda     #WHITE
   ELSE
     lda     #0
   ENDIF
@@ -544,9 +588,10 @@ DrawScreen SUBROUTINE
 
     ldx     #NUM_PLAYERS-1
 .loopKernels                    ;           @65
-    stx     .loopCnt            ; 3
+    stx     .loopCnt            ; 3 =  3
+  IF THEME_0
     lda     Pot2Bit,x           ; 4
-    sta     WSYNC               ; 3 =  6    @71
+    sta     WSYNC               ; 3 =  7    @71
 ;---------------------------------------
     sty     GRP1                ; 3         Y == 0!
 ; *** draw lines between players ***
@@ -558,11 +603,14 @@ DrawScreen SUBROUTINE
 .right0
     dey                         ; 2
     sty     REFP0               ; 3 = 13
-  IF COLOR_LINES
-    SLEEP   17-1-13
-  ELSE
-    SLEEP   17-13
+  ELSE THEME_1|THEME_2|THEME_§
+    sta     WSYNC               ; 3 =  3
+;---------------------------------------
+    sty     GRP1                ; 3         Y == 0!
+    SLEEP   13
   ENDIF
+
+    SLEEP   16-13
 X_OFS   = 48
 ; prepare player:               ; 3         @20!
     lda     xPlayerLst,x        ; 4
@@ -586,12 +634,8 @@ LinesBranches
     pha                         ; 3         x-pos
     lda     #1                  ; 2
     pha                         ; 3         index
-  IF COLOR_LINES
     lda     .lineCol            ; 3
-  ELSE
-    lda     #LINE_COL           ; 2
-  ENDIF
-    pha                         ; 3 = 13    color
+    pha                         ; 3 = 14    color
 ; prepare power-up (not drawn from stack):
     lda     xPowerLst,x         ; 4         x-pos
     ldx     #4                  ; 2 =  6    index
@@ -659,7 +703,6 @@ TIM_0a
     ldy     #<HumanColMask      ; 2
     lda     playerHumans        ; 3
     and     Pot2Bit,x           ; 4
-  IF COLOR_LINES
     cmp     #1                  ; 2         also sets AI state
     lda     LineCols,x          ; 4
     bcc     .brightLine         ; 2/3
@@ -667,13 +710,6 @@ TIM_0a
     eor     #LINE_LUM ^ $02     ; 2         -> lum == 2
 .brightLine                     ;
     sta     .lineCol            ;   = 21/24
-  ELSE ;{
-    beq     .setPtrCol0         ; 2/3
-    ldy     #<AIColMask         ; 2
-    sec                         ; 2         remember AI state
-.setPtrCol0                     ;   = 12/15
-    lda     #LINE_COL           ; 2
-  ENDIF ;}
     sty     .ptrCol0            ; 3 =  3
 TIM_0b  ; 61..65 (+3) cycles
     sta     WSYNC
@@ -872,7 +908,7 @@ TIM_2b ; 108..145 (+6) cycles
 ;---------------------------------------
     sta.w   GRP1                ; 3 = 18    @00
     lda     #$08                ;                   PfColTbl
-    SLEEP   2
+;    SLEEP   2
     sta     COLUPF              ; 3 = 23    @11
     lda     pf01LeftLst,x       ; 4
     and     #$aa                ; 2
@@ -898,7 +934,6 @@ TIM_2b ; 108..145 (+6) cycles
 ;    sbc     #$4                 ; 2 = 18    @75         HumanColMask,y (Y = 5)
 ;---------------------------------------
 ;    sta     COLUP0              ; 3 =  3    @02         currently same as above!
-    SLEEP   8
     lda     (.ptrCol1),y        ; 5
     sta     COLUP1              ; 3         @10
     stx     GRP1                ; 3 = 11    @13
@@ -950,11 +985,7 @@ TIM_2b ; 108..145 (+6) cycles
 ;---------------------------------------
     sty     GRP1                ;           Y = 0
 ; draw bottom lines:
-  IF COLOR_LINES
     lda     .lineCol
-  ELSE
-    lda     #LINE_COL
-  ENDIF
     sta     WSYNC
 ;---------------------------------------
     sta     WSYNC
@@ -966,9 +997,7 @@ TIM_2b ; 108..145 (+6) cycles
     sty     COLUBK
   IF FRAME_LINES
     sta     WSYNC
-   IF COLOR_LINES
     lda     #WHITE
-   ENDIF
     sta     WSYNC
 ;---------------------------------------
     sta     COLUBK
@@ -992,6 +1021,36 @@ Start SUBROUTINE
     pha
     bne     .clearLoop
 
+;---------------------------------------------------------------
+; Detect QuadTari in left and right port
+; Check if INPT0/2 get low after ~3 frames
+    ldy     #$82
+    sty     VBLANK      ; enable bit 7, dump ports
+    sta     WSYNC
+;---------------------------------------
+.loopWaitQ
+    sta     WSYNC
+;---------------------------------------
+    sta     VBLANK      ; disable bit 7, A = 0!
+    dex
+    bne     .loopWaitQ
+    dey
+    bmi     .loopWaitQ
+; total: 3x256 = 768 scanlines = ~2.9 NTSC frames
+; Right port
+; - INPT2 = 1 && INPT3 = 1 -> Paddles
+; - INPT2 = 0 && INPT3 = 1 -> QuadTari
+; - INPT2 = 0 && INPT3 = 0 -> SaveKey
+    lda     INPT0           ; 3
+    asl                     ; 2
+    lda     INPT2           ; 3
+    eor     INPT3           ; 3
+    ror                     ; 2         bit 7==0: left QuadTari; ; bit 6==1: right QuadTari
+    lsr                     ; 2
+    lsr                     ; 2
+    and     #QT_MASK        ; 2
+    sta     gameState       ; 3 = 22
+;---------------------------------------------------------------
     lda     INTIM           ; randomize
     ora     #$01
     sta     randomLo
@@ -1009,7 +1068,7 @@ VerticalBlank SUBROUTINE
     lsr
     bne     .loopVSync      ; branch until VSYNC has been reset
 
-    inc     frameCnt
+    dec     frameCnt
 
   IF NTSC_TIM
     lda     #44-1
@@ -1018,19 +1077,98 @@ VerticalBlank SUBROUTINE
   ENDIF
     sta     TIM64T
 
-    ldx     playerStates
-    inx
-    bne     .contGame
-    jsr     GameInit
+    bit     gameState
+    bvs     .startMode      ; GAME_START!
+    bmi     .gameRunning    ; GAME_RUNNING!
+; game stopped:
+
+; wait for button press to switch to start
+    bit     SWCHA
+    bmi     .skipRunningJmp
+    lda     gameState
+    ora     #GAME_START
+    sta     gameState
+    lda     #5
+    sta     scoreLoLst
+    lda     #60
+    sta     frameCnt
+
+; falls  through
+
+;---------------------------------------------------------------
+.startMode
+; TODO: count down
+    ldx     #NUM_PLAYERS-1
+.loopStart
+; coloring:
+; 1. not pressed, not human: fully dark row, no pellets
+; 2. not pressed, human: full colors, clear pellets
+; 3. pressed, human: full colors, show pellets
+
+; hide pellets while no button is pressed:
+    lda     #$00
+    sta     pf01LeftLst,x
+    sta     pf20MiddleLst,x
+    sta     pf12RightLst,x
+; check pressed buttons for activating players:
+; validate if QuadTari controller is used in right...
+    cpx     #4
+    bcs     .checkButton
+    cpx     #2
+    lda     gameState
+    bcs     .checkQTLeft
+    and     #QT_RIGHT
+    bne     .checkButton    ; left/right bits are set opposite!
+    beq     .notPressed
+
+.checkQTLeft
+    and     #QT_LEFT
+    bne     .notPressed
+.checkButton
+    lda     SWCHA
+    and     ButtonBit,x
+    bne     .notPressed
+    lda     playerHumans
+    and     Pot2Mask,x
+    sta     playerHumans
+; show pellets while button pressed
+    jsr     ShowPellets
+.notPressed
+; switch to 2nd QuadTari port set
+    cpx     #4
+    bne     .skip2ndSetA
+    lda     #$82
+    sta     WSYNC
+    sta     VBLANK
+    sta     WSYNC           ; wait at least one scanline
+.skip2ndSetA
+    dex
+    bpl     .loopStart
+
+    lda     frameCnt
+    bne     .skipRunningJmp
+    lda     #60
+    sta     frameCnt
+    dec     scoreLoLst
+    bne     .skipRunningJmp
+    lda     gameState
+    eor     #GAME_START|GAME_RUNNING
+    sta     gameState
+    ldx     #NUM_PLAYERS-1
+.loopReset
+    jsr     ResetLine
+    dex
+    bpl     .loopReset
+.skipRunningJmp
     jmp     .skipRunning
 
-.contGame
+;---------------------------------------------------------------
+.playerSpeed    = tmpVars
+.enemySpeed     = tmpVars+1
+.bonusSpeed     = tmpVars+2
+.tmpSpeed       = tmpVars+3
 
-.tmpSpeed       = tmpVars
-.playerSpeed    = tmpVars+1
-.enemySpeed     = tmpVars+2
-.bonusSpeed     = tmpVars+3
-
+.gameRunning
     lda     #0
     sta     .playerSpeed
     lda     playerSpeed
@@ -1107,8 +1245,18 @@ VerticalBlank SUBROUTINE
     bne     .negSpeedEyes
 
 .alive
+; fix for wrap around at left border:
+    lda     xPlayerLst,x
+    cmp     #SCW-SPRITE_W    ; 152
+    bcc     .normalPos
+    lda     #SCW/2-SPRITE_W/2
+    cmp     xEnemyLst,x
+    jmp     .contSpecial
+
+.normalPos
     lda     xEnemyLst,x
     cmp     xPlayerLst,x
+.contSpecial
     lda     enemyDirs
     ldy     powerTimLst,x
     bcs     .negSpeedEnemy
@@ -1182,15 +1330,181 @@ VerticalBlank SUBROUTINE
 .timOk
     sta     powerTimLst,x
 .skipTim
-    jsr     NextRandom
-    eor     frameCnt
-    cmp     #$fe
-    bcc     .skipReverseDir
+
+;---------------------------------------------------------------
+; check buttons:
+    lda     playerHumans
+    and     Pot2Bit,x
+    bne     .aiPlayer
+    lda     SWCHA
+    and     ButtonBit,x
+    bne     .skipPressed
+    lda     Pot2Bit,x
+    bit     buttonBits
+    bne     .skipReverseDir
+; reverse direction
     lda     playerDirs
     eor     Pot2Bit,x
     sta     playerDirs
+    lda     buttonBits
+    ora     Pot2Bit,x           ; set button bit
+    bne     .setBits
+
+.skipPressed
+    lda     buttonBits
+    and     Pot2Mask,x          ; clear button bit
+.setBits
+    sta     buttonBits
 .skipReverseDir
+    jmp     .skipReverseDirAI
+
+.aiPlayer
+; some randomness:
+    jsr     NextRandom
+    eor     frameCnt
+    cmp     #$fe
+    bcc     .skipReverseDirAI
+    lda     playerDirs
+    eor     Pot2Bit,x
+    sta     playerDirs
+.skipReverseDirAI
+
+  IF 0 ;{
+    lda     playerHumans
+    and     Pot2Bit,x
+    bne     .aiPlayer
+    jmp     .nextMove
+
+;*******************************************************************************
+.aiPlayer
+DEBUG0
+.tmpY       = tmpVars+3
+.adjXPlayer = tmpVars+4
+
+    lda     xPlayerLst,x
+    clc
+    adc     #SPRITE_W/2         ; center sprite
+    cmp     #SCW
+    bcc     .posOK
+    sbc     #SCW
+.posOK
+    sta     .adjXPlayer
+    lsr
+    lsr
+    lsr
+    tay                         ; Y = distance player has to move/8 (0..19)
+
+    lda     xEnemyLst,x
+    clc
+    adc     #SPRITE_W/2         ; center sprite
+    cmp     #SCW
+    bcc     .posEnemyOK
+    sbc     #SCW
+.posEnemyOK
+;    sec
+;    sbc     #0                  ; distance to 0 (or any other point)
+;                 U
+;    ....P........P..........E
+;        |<- dP ->|<-- dE -->|
+    cmp     .adjXPlayer
+    php
+    bcs     .enemyRight
+    lda     #SCW-1-SPRITE_W/2
+    sec
+    sbc     xEnemyLst,x
+;    clc
+;    adc     #0                  ; distance to 0 (or any other point)
+    pha
+    sty     .tmpY
+    lda     #SCW/8-1
+    sec
+    sbc     .tmpY
+    tay
+    pla
+.enemyRight                     ; A = abs(distance) = 0..159
+ ; if dist < n move away from enemy
+ ; else if dist > m move to enemy
+ ; else keep direction
+
+
+;    lda     xPlayerLst,x
+;    clc
+;    adc     #SPRITE_W/2         ; center sprite
+;    cmp     #SCW
+;    bcc     .posOK
+;    sbc     #SCW
+;.posOK
+;    lsr
+;    lsr
+;    lsr
+;    tay                         ; Y = x-pos player/8 (0..19)
+;    lda     xEnemyLst,x
+;    sec
+;    sbc     xPlayerLst,x
+;    php                         ; save relative position (CF == 1 == enemy at right)
+;    bcs     .enemyRight
+;    eor     #$ff                ;$ff..
+;    adc     #1
+;    pha
+;    sty     .tmpY
+;    lda     #SCW/8-1
+;    sec
+;    sbc     .tmpY
+;    tay
+;    pla
+;.enemyRight                     ; A = abs(distance) = 0..159
+ ; if dist < n move away from enemy
+ ; else if dist > m move to enemy
+ ; else keep direction
+
+
+ ; a = xEnemy
+    cmp     AiMoveAway,y        ; away..away, cont..cont, towards..towards enemy
+    bcs     .checkTowards
+; run away from enemy:
+    plp
+    bcc     .moveRight          ; enemy at left, move right
+    bcs     .moveLeft           ; enemy at right, move left
+
+AiMoveAway
+; min. distance between enemy and player, per player position/8, 1.4 speed factor
+;    .byte    10,14,17,20,23,26,30,33,36,39,42,46,49,52,55,58,62,65,68,71
+    .byte    22-4,34-4,45-4,56-4,67-4,78-4,90-4,101-4,112-4,123-4,134-4,146-4,157-4,168-4,179-4,190-4,202-4,213-4,224-4,235-4,
+
+
+.checkTowards
+    cmp     #SCW-SPRITE_W/2
+    bcc     .cont
+; run towards enemy:
+    plp
+    bcs     .moveRight          ; enemy at right, move right
+;    bcc     .moveLeft           ; enemy at left, move left
+.moveLeft
+    lda     playerDirs
+    ora     Pot2Bit,x
+    bne     .setDir
+
+.moveRight
+    lda     playerDirs
+    and     Pot2Mask,x
+.setDir
+    sta     playerDirs
+    NOP_B
+.cont
+    plp
+  ENDIF ;}
 .nextMove
+; switch to 2nd QuadTari port set:
+    cpx     #4              ; 2
+    bne     .skip2ndSet     ; 3/2= 7/6
+;    sta     WSYNC
+;---------------------------------------
+    lda     #$82            ; 2
+DEBUG1
+    sta     VBLANK          ; 3         wait at least one scanline until next SWCHA read
+;    sta     WSYNC
+;---------------------------------------
+.skip2ndSet
     dex
     bmi     .exitLoop
     jmp     .loopMove
@@ -1217,8 +1531,17 @@ VerticalBlank SUBROUTINE
 .scorePtr5      = .scorePtrLst+10   ; highest digit
 .scoreCol       = cxPelletBits
 
+    bit     gameState
+    bmi     .scoreMode
+    lda     scoreLoLst
+    sta     .scoreLo
+    lda     #0
+    sta     .scoreMid
+    ldx     #7
+    bpl     .displayScore
+
+.scoreMode
 ; determine player with maximum score:
-DEBUG0
   IF TOP_SCORE
     lda     #0
     sta     .player
@@ -1283,7 +1606,7 @@ DEBUG0
     asl
     ora     #ID_BLANK
     sta     .scoreHi
-; setup score into temporary pointers:
+; setup score into score pointers:
     ldx     #(6-1)*2
 .loopScores
     cpx     #(4-1)*2        ; start of points?
@@ -1365,12 +1688,16 @@ OverScan SUBROUTINE
   ENDIF
     sta     TIM64T
 
-    lda     #0
+    ldy     #0
     ldx     #NUM_PLAYERS-1
 .loopMax
+    lda     playerHumans            ; only human players increase speeds
+    and     Pot2Bit,x
+    bne     .nextMax
+    tya
     cmp     levelLst,x
     bcs     .nextMax
-    lda     levelLst,x
+    ldy     levelLst,x
 .nextMax
     dex
     bpl     .loopMax
@@ -1441,7 +1768,10 @@ OverScan SUBROUTINE
     sta     powerTimLst,x
 .skipCXSprite
     asl     cxPelletBits
-    bcc     .skipCXPellet
+    bcs     .eatPellet
+    jmp     .skipCXPellet
+
+.eatPellet
 ; eat pellet:
     lda     xPlayerLst,x
     lsr
@@ -1475,14 +1805,13 @@ OverScan SUBROUTINE
     eor     .xPos
     bne     .noPower
     sta     xPowerLst,x
-    lda     #POWER_TIM      ; TODO: base timer on game speed
+    lda     #POWER_TIM
     sta     powerTimLst,x
     lda     #POWER_PTS
     NOP_W
 .noPower
     lda     #PELLET_PTS     ; levelLst,x ?
     jsr     AddScoreLo
-
 ; check if all pellets cleared:
     lda     pf01LeftLst,x
     ora     pf20MiddleLst,x
@@ -1493,6 +1822,9 @@ OverScan SUBROUTINE
     lda     levelLst,x
     cmp     .maxLevel
     bcc     .skipIncSpeed
+    lda     playerHumans    ; only human players increase speeds
+    and     Pot2Bit,x
+    bne     .skipIncSpeed
     inc     .maxLevel
     lda     playerSpeed
 ;    clc
@@ -1509,7 +1841,7 @@ OverScan SUBROUTINE
   ENDIF
     bcs     .skipEnemySpeed
     sta     enemySpeed
-    sta     bonusSpeed
+;    sta     bonusSpeed
 .skipEnemySpeed
 .skipIncSpeed
   IF !TOP_SCORE
@@ -1570,10 +1902,10 @@ GameInit SUBROUTINE
 ; setup initial board:
     ldx     #NUM_PLAYERS-1
 .loopPf
-    jsr     ResetLine
+;    jsr     ResetLine
     lda     #SCW*1/2-16     ; at right of left power-ups
     sta     xPlayerLst,x
-    lda     #SCW-8          ; right border
+    lda     #SCW-8-1        ; right border-1
     sta     xEnemyLst,x
     lda     #X_BONUS_OFF    ; no bonus
     sta     xBonusLst,x
@@ -1586,17 +1918,14 @@ GameInit SUBROUTINE
     stx     VDELBL
 
 ; random initial directions:
-    jsr     NextRandom
-    sta     playerDirs
-; 1 or 2 randomly disabled players:
-    jsr     NextRandom
-    and     #7
-    tax
-    jsr     NextRandom
-    and     #7
-    tay
-    lda     Pot2Bit,x
-    ora     Pot2Bit,y
+;    jsr     NextRandom
+;    sta     playerDirs
+; 1 randomly disabled player at the bottom:
+;    jsr     NextRandom
+;    and     #3              ; bottom 4 rows
+;    tax
+;    lda     Pot2Bit,x
+    lda     #$ff
     sta     playerHumans
 ;    sta     playerStates
 ;    sta     enemyStates
@@ -1605,7 +1934,7 @@ GameInit SUBROUTINE
     sta     playerSpeed
     lda     #INIT_EN_SPEED
     sta     enemySpeed
-    sta     bonusSpeed
+;    sta     bonusSpeed
     rts
 ; /GameInit
 
@@ -1634,12 +1963,6 @@ AddScore
 ;---------------------------------------------------------------
 ResetLine SUBROUTINE
 ;---------------------------------------------------------------
-    lda     #$f5
-    sta     pf01LeftLst,x
-    lda     #$fa
-    sta     pf20MiddleLst,x
-    lda     #$ff
-    sta     pf12RightLst,x
 ; position new power-up:
     jsr     NextRandom
     and     #$78
@@ -1655,6 +1978,13 @@ ResetLine SUBROUTINE
     adc     #6
   ENDIF
     sta     xPowerLst,x
+ShowPellets
+    lda     #$f5
+    sta     pf01LeftLst,x
+    lda     #$fa
+    sta     pf20MiddleLst,x
+    lda     #$ff
+    sta     pf12RightLst,x
     rts
 
 ;---------------------------------------------------------------
@@ -1709,7 +2039,6 @@ NextRandom SUBROUTINE
 
     ALIGN_FREE_LBL 256, "Rom-Tables"
 
-  IF COLOR_LINES
 LINE_LUM    = $a
 LineCols
   IF NTSC_COL
@@ -1759,6 +2088,19 @@ BonusScore
 BonusScoreHi
     .byte   $5
     .byte   $0,  $0,  $0,  $0,  $1,  $2,  $3
+
+ButtonBit
+    .byte   %00000100
+    .byte   %00001000
+    .byte   %01000000
+    .byte   %10000000
+    .byte   %00000100
+    .byte   %00001000
+    .byte   %01000000
+    .byte   %10000000
+  CHECKPAGE ButtonBit
+
+    .byte   "QUADTARI"
 
     ALIGN_FREE_LBL 256, "DigitGfx"
 
@@ -1934,6 +2276,7 @@ BcdTbl
      ALIGN_FREE_LBL 256, "SpriteGfx"
 
 SpriteGfx
+  IF THEME_0
 PlayerGfx0
     .byte   %00011100
     .byte   %00111110
@@ -1980,6 +2323,196 @@ PlayerGfx2
     .byte   %00111100
     .byte   %00111110
     .byte   %00011100
+  ENDIF
+  IF THEME_1
+PlayerGfx0
+    .byte   %00011100
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %00001000
+    .byte   %00001000
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00011100
+GFX_H = . - PlayerGfx0
+PlayerGfx1
+    .byte   %00011100
+    .byte   %00011110
+    .byte   %00011110
+    .byte   %01001111
+    .byte   %01101111
+    .byte   %01101111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111011
+    .byte   %01111011
+    .byte   %01111001
+    .byte   %00111100
+    .byte   %00111100
+    .byte   %00011100
+PlayerGfx2
+    .byte   %00010100
+    .byte   %00110110
+    .byte   %00110110
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %00110110
+    .byte   %00110110
+    .byte   %00010100
+PlayerGfx3
+    .byte   %00011100
+    .byte   %00111100
+    .byte   %00111100
+    .byte   %01111001
+    .byte   %01111011
+    .byte   %01111011
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01101111
+    .byte   %01101111
+    .byte   %01001111
+    .byte   %00011110
+    .byte   %00011110
+    .byte   %00011100
+  ENDIF
+  IF THEME_2
+PlayerGfx0
+    .byte   %00011100
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00011100
+GFX_H = . - PlayerGfx0
+PlayerGfx1
+    .byte   %00011000
+    .byte   %00111010
+    .byte   %00111010
+    .byte   %01111101
+    .byte   %01111101
+    .byte   %01111101
+    .byte   %01111101
+    .byte   %01111101
+    .byte   %01111101
+    .byte   %01111101
+    .byte   %01111101
+    .byte   %00111010
+    .byte   %00111010
+    .byte   %00011000
+PlayerGfx2
+    .byte   %00010100
+    .byte   %00110110
+    .byte   %00110110
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %00110110
+    .byte   %00110110
+    .byte   %00010100
+PlayerGfx3
+    .byte   %00001100
+    .byte   %00101110
+    .byte   %00101110
+    .byte   %01011111
+    .byte   %01011111
+    .byte   %01011111
+    .byte   %01011111
+    .byte   %01011111
+    .byte   %01011111
+    .byte   %01011111
+    .byte   %01011111
+    .byte   %00101110
+    .byte   %00101100
+    .byte   %00001100
+  ENDIF
+  IF THEME_3
+PlayerGfx0
+    .byte   %00011100
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %01000001
+    .byte   %00000000
+    .byte   %00011100
+    .byte   %01111111
+    .byte   %01101011
+    .byte   %01101011
+    .byte   %01101011
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00011100
+GFX_H = . - PlayerGfx0
+PlayerGfx1
+    .byte   %00011100
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00001111
+    .byte   %00000111
+    .byte   %01100111
+    .byte   %01111111
+    .byte   %00101111
+    .byte   %00101111
+    .byte   %00101111
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00011100
+PlayerGfx2
+    .byte   %00011100
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00011100
+    .byte   %00011100
+    .byte   %01111111
+    .byte   %01011101
+    .byte   %01011101
+    .byte   %01011101
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00011100
+PlayerGfx3
+    .byte   %00011100
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %01111000
+    .byte   %01110000
+    .byte   %01110011
+    .byte   %01111111
+    .byte   %01111010
+    .byte   %01111010
+    .byte   %01111010
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00111100
+    .byte   %00011100
+  ENDIF
 
 EnemyGfx0
     .byte   %01010101
@@ -2177,9 +2710,6 @@ PearGfx
     .byte   %00011000
     .byte   %00001000
     .byte   %00001100
-
-BlankGfx
-    ds      GFX_H, 0
     CHECKPAGE SpriteGfx
 
     ALIGN_FREE_LBL  256, "ColorTbls"
@@ -2315,7 +2845,7 @@ OrangeCol
     .byte   ORANGE|$a
     .byte   ORANGE|$a
     .byte   ORANGE|$a
-    .byte   ORANGE|$a
+    .byte   ORANGE|$c
     .byte   ORANGE|$c
     .byte   ORANGE|$c
     .byte   ORANGE|$c
@@ -2353,20 +2883,20 @@ MelonCol
     .byte   GREEN|$6
     .byte   GREEN|$e
 BananaCol
-    .byte   YELLOW|$6
     .byte   YELLOW|$8
     .byte   YELLOW|$a
-    .byte   YELLOW|$a
-    .byte   YELLOW|$a
-    .byte   YELLOW|$a
-    .byte   0
-    .byte   0
-    .byte   YELLOW|$a
-    .byte   YELLOW|$a
-    .byte   YELLOW|$a
     .byte   YELLOW|$c
-    .byte   YELLOW|$6
-    .byte   YELLOW|$6
+    .byte   YELLOW|$c
+    .byte   YELLOW|$c
+    .byte   YELLOW|$c
+    .byte   0
+    .byte   0
+    .byte   YELLOW|$c
+    .byte   YELLOW|$c
+    .byte   YELLOW|$c
+    .byte   YELLOW|$e
+    .byte   YELLOW|$8
+    .byte   YELLOW|$8
 GrapesCol
     .byte   PURPLE|$a
     .byte   PURPLE|$c
