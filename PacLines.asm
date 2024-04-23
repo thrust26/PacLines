@@ -8,14 +8,15 @@
   LIST ON
 
 ; TODOs:
-; - RESET, SELECT?
 ; ? game variations
 ; o game states
-;   o %00, waiting (before start and at end of game)
-;   o %10, start
+;   o %00, waiting/select (before start and at end of game); TODO: level display
+;   o %10, start; TODO: level display
 ;   + %11, running
 ;   + %01, over (all human players killed)
-; - demo mode
+; o demo mode
+;   - automatic start
+;   - stop with button press
 ; o difficulty ramp up
 ;   - different start levels (e.g. 1, 5, 9; displayed left)
 ;   x globally
@@ -99,11 +100,12 @@
 ;   + bonus
 ;   + lines
 ;   x pellets & power pill
-; - controls
-;   - dectect QuadTari
-;   - start game
-;   - active player
-;   - reverse direction
+; + controls
+;   + dectect QuadTari
+;   + start game
+;   + active player
+;   + reverse direction
+; + RESET, SELECT
 
 
 ;===============================================================================
@@ -157,6 +159,7 @@ POWER_H         = 6
 SPRITE_W        = 8
 
 NUM_PLAYERS     = 8
+NUM_VARIATIONS  = 3         ; TODO
 
 POWER_TIM       = 140
 
@@ -179,7 +182,7 @@ BONUS_MASK      = (1<<BONUS_SHIFT)-1
 
 DELTA_SPEED     = 140                   ; 40% delta; start: player d% faster, end: enemy d% faster
 INIT_EN_SPEED   = 48
-DIFF_EN_SPEED   = 7
+DIFF_EN_SPEED   = 7-1
 MAX_EN_SPEED    = 255
 INIT_PL_SPEED   = (INIT_EN_SPEED * DELTA_SPEED + 50) / 100    ; -> equal speed after 8 levels
 DIFF_PL_SPEED   = DIFF_EN_SPEED - 2
@@ -194,9 +197,10 @@ POWER_PTS       = 5
 ENEMY_PTS       = 10
 
 ; gameState constants:
-PLAYER_MASK     = $07
-DEMO_MODE       = $08   ; TODO
-QT_RIGHT        = $10               ; bit 5==0: left QuadTari; bit 4==1: right QuadTari
+VAR_MASK        = $03       ; game variation TODO
+DEBOUNCE        = $04
+DEMO_MODE       = $08
+QT_RIGHT        = $10       ; bit 5==0: left QuadTari; bit 4==1: right QuadTari
 QT_LEFT         = $20
 QT_MASK         = QT_LEFT|QT_RIGHT
 GAME_WAITING    = $00
@@ -228,7 +232,7 @@ randomLo        .byte
   IF RAND16 ;{
 randomHi        .byte
   ENDIF ;}
-gameState       .byte       ; rL......      Right/Left QuadTari
+gameState       .byte       ; ..rL.PPP      Right/Left QuadTari, P (score displayed when game is over)
 ;---------------------------------------
 levelLst        ds  NUM_PLAYERS
 ;---------------------------------------
@@ -237,18 +241,25 @@ xEnemyLst       ds  NUM_PLAYERS
 xBonusLst       ds  NUM_PLAYERS
 xPowerLst       ds  NUM_PLAYERS
 ;---------------------------------------
+playerAI        .byte       ; 0 = human, 1 = AI
+;---------------------------------------
 resetLst        = .
 pfLst           ds  NUM_PLAYERS*3           ; 24 bytes
 pf01LeftLst     = pfLst
 pf20MiddleLst   = pfLst+NUM_PLAYERS
 pf12RightLst    = pfLst+NUM_PLAYERS*2
 ;---------------------------------------
+; only used during GAME_RUNNING:
 playerSpeed     .byte
 playerSpeedSum  .byte
 enemySpeed      .byte
 enemySpeedSum   .byte
 bonusSpeed      = enemySpeed                ; TODO: eliminate if bonus speed is always 50% of enemy speed
 bonusSpeedSum   .byte
+; reused:
+lastButtons     = playerSpeed       ; BBBBBBBB  reused during GAME_WAITING & GAME_OVER
+waitedOver      = playerSpeedSum    ; ......WW  reused during GAME_OVER
+playerIdx       = enemySpeed        ; .....PPP  reused during GAME_OVER
 ;---------------------------------------
 ; row bits:
 buttonBits      .byte       ; 1 = pressed
@@ -256,7 +267,6 @@ playerLeft      .byte       ; 1 = left, 0 = right
 enemyLeft       .byte       ; 1 = left, 0 = right
 bonusLeft       .byte       ; 1 = left, 0 = right
 playerDone      .byte       ; 0 = alive, 1 = dead/score rolled
-playerAI        .byte       ; 0 = human, 1 = AI
 enemyEyes       .byte       ; 0 = alive, 1 = eyes
 ;---------------------------------------
 powerTimLst     ds NUM_PLAYERS              ;  8 bytes
@@ -570,19 +580,19 @@ DrawScreen SUBROUTINE
     sty     GRP1                ; 3
     sty     GRP0                ; 3
     sty     GRP1                ; 3
-    sty     NUSIZ0              ; 3
+    sty     NUSIZ0              ; 3 = 17
+;---------------------------------------
     sty     NUSIZ1              ; 3
     sty     VDELP1              ; 3
     sty     GRP1                ; 3
     ldx     #$ff                ; 2
-    txs                         ; 2 = 30
+    txs                         ; 2
   IF LARGE_POWER
-    lda     #%100000
+    lda     #%100000            ; 2
   ELSE
-    lda     #%010000
+    lda     #%010000            ; 2
   ENDIF
-    sta     CTRLPF
-
+    sta     CTRLPF              ; 3 = 20
 ;---------------------------------------------------------------
 .loopCnt    = tmpVars
 .color0     = .loopCnt
@@ -1105,13 +1115,258 @@ Start SUBROUTINE
     and     #QT_MASK        ; 2
   IF GAME_WAITING
     ora     #GAME_WAITING
-    bne     ContInitCart
-  ELSE
-    jmp     ContInitCart
   ENDIF
+    jmp     ContInitCart
 ;---------------------------------------------------------------
 
-MainLoop
+ContDrawScreen
+;---------------------------------------------------------------
+OverScan SUBROUTINE
+;---------------------------------------------------------------
+.loopCnt        = tmpVars
+.xPos           = tmpVars+1
+.maxLevel       = tmpVars+2
+
+  IF NTSC_TIM
+    lda     #36-2
+  ELSE
+    lda     #63
+  ENDIF
+    sta     TIM64T
+
+    bit     gameState
+    bmi     .startRunningMode       ; GAME_RUNNING|GAME_OVER
+.notRunning                         ; GAME_WAITING|GAME_START|GAME_OVER
+    jmp     .skipGameRunning
+
+.startRunningMode
+    bvc     .notRunning             ; GAME_OVER
+    ldy     #0
+    ldx     #NUM_PLAYERS-1
+.loopMax
+    lda     gameState
+    and     #DEMO_MODE
+    bne     .demoMode
+    lda     playerAI                ; only human players increase speeds
+    and     Pot2Bit,x
+    bne     .nextMax
+.demoMode
+    tya
+    cmp     levelLst,x
+    bcs     .nextMax
+    ldy     levelLst,x
+.nextMax
+    dex
+    bpl     .loopMax
+    sta     .maxLevel
+
+    ldx     #NUM_PLAYERS-1
+.loopPlayers
+    stx     .loopCnt
+    asl     cxSpriteBits
+    bcc     .skipCXSpriteJmp
+    lda     frameCnt
+    lsr
+    bcc     .checkEnemy
+    lda     #X_BONUS_OFF
+    cmp     xBonusLst,x
+    beq     .checkEnemy
+; must overlap at least 4 pixels:
+    lda     xPlayerLst,x
+    sec
+    sbc     xBonusLst,x
+    adc     #4
+    cmp     #4*2
+    bcs     .skipCXSprite
+    lda     #X_BONUS_OFF
+    sta     xBonusLst,x
+    lda     levelLst,x
+  REPEAT BONUS_SHIFT
+    lsr
+  REPEND
+    and     #NUM_BONUS-1
+    tax
+    lda     BonusScore,x
+    ldy     BonusScoreHi,x
+    ldx     .loopCnt
+    jsr     AddScore
+.skipCXSpriteJmp
+    jmp     .skipCXSprite
+
+.checkEnemy
+    lda     Pot2Bit,x       ; already dead?
+    bit     enemyEyes
+    bne     .skipCXSprite   ;  yes, skip
+; must overlap at least 4 pixels:
+    lda     xPlayerLst,x
+    sec
+    sbc     xEnemyLst,x
+    adc     #4
+    cmp     #4*2
+    bcs     .skipCXSprite
+
+    lda     Pot2Bit,x
+    ldy     powerTimLst,x   ; power-up enabled?
+    bne     .killEnemy      ;  yes, kill enemy
+; kill player:
+    and     playerAI
+    bne     .skipCXSprite
+    lda     Pot2Bit,x
+    ora     playerDone
+    sta     playerDone
+    ora     playerAI
+    eor     #$ff
+    bne     .skipCXSprite
+    sta     lastButtons
+    sta     frameCnt
+    sta     playerIdx
+    lda     #2
+    sta     waitedOver
+    lda     gameState
+    eor     #GAME_RUNNING^GAME_OVER
+    sta     gameState
+    bne     .skipCXSprite
+    DEBUG_BRK
+
+.killEnemy
+    lda     Pot2Bit,x
+    ora     enemyEyes        ; -> eyes
+    sta     enemyEyes
+    lda     #ENEMY_PTS
+    jsr     AddScoreLo
+; set enemy escape direction:
+    lda     xEnemyLst,x
+    cmp     #SCW/2-4
+    lda     enemyLeft
+    bcc     .runLeft
+    ora     Pot2Bit,x
+    bcs     .setEnemyDir
+.runLeft
+    and     Pot2Mask,x
+.setEnemyDir
+    sta     enemyLeft
+    lda     #0              ; disable power-up
+    sta     powerTimLst,x
+.skipCXSprite
+    asl     cxPelletBits
+    bcs     .eatPellet
+    jmp     .skipCXPellet
+
+.eatPellet
+; eat pellet:
+    lda     xPlayerLst,x
+    lsr
+    lsr
+    lsr
+    tay
+; clear pellet; TODO: when moving left, currently one pixel too early
+; Y = x-pos, X = row
+    txa
+    clc
+    adc     PfOffset,y
+    tax
+    lda     pfLst,x
+    and     PfMask,y
+    cmp     pfLst,x
+    sta     pfLst,x
+    beq     .skipCXPellet
+    sty     .xPos
+    ldx     .loopCnt
+; check if power-up got eaten:
+    lda     xPowerLst,x
+    sec
+  IF LARGE_POWER
+    sbc     #6-1
+  ELSE
+    sbc     #6
+  ENDIF
+    lsr
+    lsr
+    lsr
+    eor     .xPos
+    bne     .noPower
+    sta     xPowerLst,x
+    lda     #POWER_TIM
+    sta     powerTimLst,x
+    lda     #POWER_PTS
+    NOP_W
+.noPower
+    lda     #PELLET_PTS     ; levelLst,x ?
+    jsr     AddScoreLo
+; check if all pellets cleared:
+    lda     pf01LeftLst,x
+    ora     pf20MiddleLst,x
+    ora     pf12RightLst,x
+    bne     .skipCXPellet
+; increase speeds: (TODO: enemy speed)
+; increase speed only for 1st player reaching next level:
+    lda     levelLst,x
+    cmp     .maxLevel
+    bcc     .skipIncSpeed
+    lda     gameState
+    and     #DEMO_MODE
+    bne     .demoModeInc
+    lda     playerAI        ; only human players increase speeds
+    and     Pot2Bit,x
+    bne     .skipIncSpeed2
+.demoModeInc
+    inc     .maxLevel
+    lda     playerSpeed
+;    clc
+    adc     #DIFF_PL_SPEED-1
+    cmp     #MAX_PL_SPEED+1
+    bcs     .skipPlayerSpeed
+    sta     playerSpeed
+.skipPlayerSpeed
+    lda     enemySpeed
+    clc
+    adc     #DIFF_EN_SPEED
+  IF MAX_EN_SPEED - 1 + DIFF_EN_SPEED < $100
+    cmp     #MAX_EN_SPEED
+  ENDIF
+    bcs     .skipEnemySpeed
+    sta     enemySpeed
+;    sta     bonusSpeed
+.skipEnemySpeed
+.skipIncSpeed
+  IF !TOP_SCORE
+    stx     scorePlayerIdx
+  ENDIF
+.skipIncSpeed2
+    ldy     levelLst,x
+    iny
+    cpy     #100
+    bcc     .incLevel
+    ldy     #100 - (1<<BONUS_SHIFT)*NUM_BONUS ; reset level to e.g. 68
+.incLevel
+    sty     levelLst,x
+; new line with random power-up & pellets:
+    jsr     SetupPowerPellets
+; reset bonus:
+    lda     levelLst,x
+    and     #BONUS_MASK     ; every 2nd/4th/8th level
+    bne     .skipBonus
+    jsr     NextRandom
+    and     Pot2Bit,x
+    eor     bonusLeft
+    sta     bonusLeft
+    ldy     #SCW/2-4        ; start bonus at center
+    sty     xBonusLst,x
+.skipBonus
+.skipCXPellet
+;.nextPlayer
+    ldx     .loopCnt
+    dex
+    bmi     .exitLoop
+    jmp     .loopPlayers
+
+.exitLoop
+.skipGameRunning
+
+.waitTim
+    lda     INTIM
+    bne     .waitTim
+; /OverScan
 ;---------------------------------------------------------------
 VerticalBlank SUBROUTINE
 ;---------------------------------------------------------------
@@ -1131,67 +1386,100 @@ VerticalBlank SUBROUTINE
   ENDIF
     sta     TIM64T
 
-;ButtonBit
-;    .byte   %00000100
-;    .byte   %00001000
-;    .byte   %01000000
-;    .byte   %10000000
-;    .byte   %00000100
-;    .byte   %00001000
-;    .byte   %01000000
-;    .byte   %10000000
-
-;    if pressed
-;      if was pressed
-;        ignore
-;      else
-;        press
-;    else
-;        release
+; this saves 2 byte:
+;    lda     SWCHB
+;    and     #%11
+;    cmp     #%11
+;    beq     .skipResetSelect
+;    pha
+;    jsr     GameInit
+;    pla
+;    lsr
+;    lda     gameState
+;    and     #QT_MASK
+;    bcs     .skipReset1
+;    ora     #GAME_RUNNING
+;    jmp     .contReset
 ;
-;    lda     SWCHA
-;    eor    #$ff
-;    beq     .released
-;    ldy     pressed
-;    bne     .ignore
-;    sta     pressed
-;; do press
-;
-;.released
-;    sta     pressed
-;.ignore
+;.skipReset1
+;    ora     #GAME_WAITING
+;    sta     gameState
+;.skipResetSelect
+DEBUG0
+    lda     SWCHB
+    and     #%11
+    cmp     #%11
+    bcs     .notSwitched
+    lsr
+    lda     #DEBOUNCE
+    bit     gameState
+    bne     .skipSwitches
+    ora     gameState
+    sta     gameState
+    php
+    jsr     GameInit
+    plp
+    lda     gameState
+    and     #~GAME_MASK
+    ora     #GAME_WAITING
+    bcs     .select
+    eor     #GAME_WAITING^GAME_RUNNING
+    jmp     .contReset
 
-  IF 0 ;{
-    lda     SWCHA
-    ldy     #$82
-    sta     WSYNC
-;---------------------------------------
-    sty     VBLANK
-    and     #%11001100
-    lsr
-    lsr
-    sta     .tmpButton
-    lda     #%11001100
-    sta     WSYNC           ; wait at least one scanline
-;---------------------------------------
-    and     SWCHA
-    ora     .tmpButton       ; %76435410
-    eor     #$ff
+.select
+    sta     gameState
+    and     #VAR_MASK
     tay
-    and     lastButtons         ; last lastButtons & new lastButtons
-    sty     lastButtons
-;    php                     ; bne -> no new press
-  ENDIF ;}
+    iny
+    cpy     #NUM_VARIATIONS
+    bcc     .skipResetVar
+    ldy     #0
+.skipResetVar
+    tya
+    eor     gameState
+    and     #VAR_MASK
+    eor     gameState
+DEBUG1
+    bne     .setGameState
+    DEBUG_BRK
 
+.notSwitched
+    lda     gameState
+    and     #~DEBOUNCE
+.setGameState
+    sta     gameState
+.skipSwitches
     bit     gameState
     bpl     .waitingOverMode
     jmp     .startRunningMode   ; GAME_START|GAME_RUNNING
 
+
+;    lda     SWCHB
+;    lsr
+;    bcs     .skipReset
+;    jsr     GameInit
+;    lda     gameState
+;    and     #QT_MASK
+;    ora     #GAME_RUNNING
+;    jmp     .contReset
+;
+;.skipReset
+;    lsr
+;    bcs     .skipSelect
+;    jsr     GameInit
+;    lda     gameState
+;    and     #QT_MASK
+;    ora     #GAME_WAITING
+;    sta     gameState
+;
+;.skipSelect
+;    bit     gameState
+;    bpl     .waitingOverMode
+;    jmp     .startRunningMode   ; GAME_START|GAME_RUNNING
+
 ;---------------------------------------------------------------
 ; check all buttons for pressed and released:
 .tmpButtons = tmpVars
-lastButtons = playerSpeed   ; reused during GAME_WAITING & GAME_OVER
-waitedOver  = enemySpeed    ; reused during GAME_OVER
 
 .waitingOverMode
     lda     SWCHA
@@ -1317,23 +1605,13 @@ ContInitCart
     bpl     .loopStart
 
     lda     frameCnt
-    bne     .skipRunningJmp
+    bne     .skipRunningJmp2
     lda     #60
     sta     frameCnt
     dec     scoreLoLst
-    bne     .skipRunningJmp2
+    bpl     .skipRunningJmp2
 ; switch to running state:
-    lda     gameState
-    eor     #GAME_START^GAME_RUNNING
-    sta     gameState
-
-    lda     playerAI
-    cmp     #$ff
-    bne     .notDemoMode
-    lda     gameState           ; display colors in demo mode
-    ora     #DEMO_MODE
-    sta     gameState
-.notDemoMode
+; restore power-up:
     ldx     #NUM_PLAYERS-1
 .loopReset
     jsr     SetupPellets
@@ -1343,11 +1621,34 @@ ContInitCart
     sta     .tmpXPowerLst,x
     dex
     bpl     .loopReset
-    lda     #INIT_PL_SPEED
+; switch to running mode
+    lda     gameState
+    eor     #GAME_START^GAME_RUNNING
+.contReset
+    sta     gameState
+; intialize demo mode & speeds:
+    lda     playerAI
+    cmp     #$ff
+    lda     gameState           ; display colors in demo mode
+    bcc     .notDemoMode
+    ora     #DEMO_MODE
+    sta     gameState
+.notDemoMode
+    and     #VAR_MASK
+    tay
+;    lda     #INIT_PL_SPEED
+    lda     PlayerSpeeds,y
     sta     playerSpeed
-    lda     #INIT_EN_SPEED
+;    lda     #INIT_EN_SPEED
+    lda     EnemySpeeds,y
     sta     enemySpeed
 ;    sta     bonusSpeed
+    lda     VarLevels,y
+    ldx     #NUM_PLAYERS-1
+.loopLevels
+    sta     levelLst,x
+    dex
+    bpl     .loopLevels
 .skipRunningJmp2
     jmp     .skipRunning
 
@@ -1694,7 +1995,6 @@ AiMoveAway
 ;    sta     WSYNC
 ;---------------------------------------
     lda     #$82            ; 2
-DEBUG1
     sta     VBLANK          ; 3         wait at least one scanline until next SWCHA read
 ;    sta     WSYNC
 ;---------------------------------------
@@ -1758,9 +2058,7 @@ PrepareDisplay SUBROUTINE
     bpl     .loopCountHuman
     stx     .countHuman             ; TODO: if all players are AI, display...? Or no game over?
 ; check timer and update game state counter:
-    lda     gameState
-    and     #PLAYER_MASK            ; 0..7
-    tax
+    ldx     playerIdx
     lda     frameCnt
     bpl     .sameRank
     lda     #120
@@ -1771,11 +2069,7 @@ PrepareDisplay SUBROUTINE
     bpl     .skipReset
     ldx     .countHuman
 .skipReset
-    txa
-    eor     gameState
-    and     #PLAYER_MASK
-    eor     gameState
-    sta     gameState
+    stx     playerIdx
 .sameRank
     stx     .count
 ; select n-largest score to display:
@@ -1790,19 +2084,24 @@ PrepareDisplay SUBROUTINE
     bne     .contGameOver
 ;---------------------------------------------------------------
 .waitingMode
-; TODO
-;---------------------------------------------------------------
-.startRunningMode
-    bvs     .runningMode
+    lda     #0                  ; TODO: game variation?
+    NOP_W
+---------------------------------------------------------------
+.startMode
     lda     scoreLoLst
+.contWaitingMode
     sta     .scoreLo
+    lda     gameState
+    and     #VAR_MASK           ; game variation
+    sta     .number
     lda     #0
     sta     .scoreMid
     lda     #WHITE
     ldx     #7
     bpl     .displayScoreCol
 ;---------------------------------------------------------------
-.runningMode
+.startRunningMode
+    bvc     .startMode
   IF TOP_SCORE
 ; determine player with maximum score:
     lda     #0                  ; get for largest score
@@ -1840,7 +2139,7 @@ PrepareDisplay SUBROUTINE
     lda     PlayerCol,x
 .displayScoreCol
     sta     .scoreCol
-    lda     .number         ; display player number or rank (game over)
+    lda     .number         ; display variation, player number or rank (game over)
     asl
     asl
     asl
@@ -1967,267 +2266,9 @@ TIM_4b
 ; X = nth player
     rts
 
-
-ContDrawScreen
-;---------------------------------------------------------------
-OverScan SUBROUTINE
-;---------------------------------------------------------------
-.loopCnt        = tmpVars
-.xPos           = tmpVars+1
-.maxLevel       = tmpVars+2
-
-  IF NTSC_TIM
-    lda     #36-2
-  ELSE
-    lda     #63
-  ENDIF
-    sta     TIM64T
-
-    bit     gameState
-    bmi     .startRunningMode       ; GAME_RUNNING|GAME_OVER
-.notRunning                         ; GAME_WAITING|GAME_START|GAME_OVER
-    jmp     .skipGameRunning
-
-.startRunningMode
-    bvc     .notRunning             ; GAME_OVER
-    ldy     #0
-    ldx     #NUM_PLAYERS-1
-.loopMax
-    lda     gameState
-    and     #DEMO_MODE
-    bne     .demoMode
-    lda     playerAI                ; only human players increase speeds
-    and     Pot2Bit,x
-    bne     .nextMax
-.demoMode
-    tya
-    cmp     levelLst,x
-    bcs     .nextMax
-    ldy     levelLst,x
-.nextMax
-    dex
-    bpl     .loopMax
-    sta     .maxLevel
-
-    ldx     #NUM_PLAYERS-1
-.loopPlayers
-    stx     .loopCnt
-    asl     cxSpriteBits
-    bcc     .skipCXSpriteJmp
-    lda     frameCnt
-    lsr
-    bcc     .checkEnemy
-    lda     #X_BONUS_OFF
-    cmp     xBonusLst,x
-    beq     .checkEnemy
-; must overlap at least 4 pixels:
-    lda     xPlayerLst,x
-    sec
-    sbc     xBonusLst,x
-    adc     #4
-    cmp     #4*2
-    bcs     .skipCXSprite
-    lda     #X_BONUS_OFF
-    sta     xBonusLst,x
-    lda     levelLst,x
-  REPEAT BONUS_SHIFT
-    lsr
-  REPEND
-    and     #NUM_BONUS-1
-    tax
-    lda     BonusScore,x
-    ldy     BonusScoreHi,x
-    ldx     .loopCnt
-    jsr     AddScore
-.skipCXSpriteJmp
-    jmp     .skipCXSprite
-
-.checkEnemy
-    lda     Pot2Bit,x       ; already dead?
-    bit     enemyEyes
-    bne     .skipCXSprite   ;  yes, skip
-; must overlap at least 4 pixels:
-    lda     xPlayerLst,x
-    sec
-    sbc     xEnemyLst,x
-    adc     #4
-    cmp     #4*2
-    bcs     .skipCXSprite
-
-    lda     Pot2Bit,x
-    ldy     powerTimLst,x   ; power-up enabled?
-    bne     .killEnemy      ;  yes, kill enemy
-; kill player:
-    and     playerAI
-    bne     .skipCXSprite
-    lda     Pot2Bit,x
-    ora     playerDone
-    sta     playerDone
-    ora     playerAI
-    eor     #$ff
-    bne     .skipCXSprite
-    sta     lastButtons
-    sta     frameCnt
-    lda     #2
-    sta     waitedOver
-    lda     gameState
-    and     #~(GAME_MASK|PLAYER_MASK)
-    ora     #GAME_OVER
-    sta     gameState
-    bne     .skipCXSprite
-    DEBUG_BRK
-
-.killEnemy
-    lda     Pot2Bit,x
-    ora     enemyEyes        ; -> eyes
-    sta     enemyEyes
-    lda     #ENEMY_PTS
-    jsr     AddScoreLo
-; set enemy escape direction:
-    lda     xEnemyLst,x
-    cmp     #SCW/2-4
-    lda     enemyLeft
-    bcc     .runLeft
-    ora     Pot2Bit,x
-    bcs     .setEnemyDir
-.runLeft
-    and     Pot2Mask,x
-.setEnemyDir
-    sta     enemyLeft
-    lda     #0              ; disable power-up
-    sta     powerTimLst,x
-.skipCXSprite
-    asl     cxPelletBits
-    bcs     .eatPellet
-    jmp     .skipCXPellet
-
-.eatPellet
-; eat pellet:
-    lda     xPlayerLst,x
-    lsr
-    lsr
-    lsr
-    tay
-; clear pellet; TODO: when moving left, currently one pixel too early
-; Y = x-pos, X = row
-    txa
-    clc
-    adc     PfOffset,y
-    tax
-    lda     pfLst,x
-    and     PfMask,y
-    cmp     pfLst,x
-    sta     pfLst,x
-    beq     .skipCXPellet
-    sty     .xPos
-    ldx     .loopCnt
-; check if power-up got eaten:
-    lda     xPowerLst,x
-    sec
-  IF LARGE_POWER
-    sbc     #6-1
-  ELSE
-    sbc     #6
-  ENDIF
-    lsr
-    lsr
-    lsr
-    eor     .xPos
-    bne     .noPower
-    sta     xPowerLst,x
-    lda     #POWER_TIM
-    sta     powerTimLst,x
-    lda     #POWER_PTS
-    NOP_W
-.noPower
-    lda     #PELLET_PTS     ; levelLst,x ?
-    jsr     AddScoreLo
-; check if all pellets cleared:
-    lda     pf01LeftLst,x
-    ora     pf20MiddleLst,x
-    ora     pf12RightLst,x
-    bne     .skipCXPellet
-; increase speeds: (TODO: enemy speed)
-; increase speed only for 1st player reaching next level:
-    lda     levelLst,x
-    cmp     .maxLevel
-    bcc     .skipIncSpeed
-    lda     gameState
-    and     #DEMO_MODE
-    bne     .demoModeInc
-    lda     playerAI        ; only human players increase speeds
-    and     Pot2Bit,x
-    bne     .skipIncSpeed2
-.demoModeInc
-    inc     .maxLevel
-    lda     playerSpeed
-;    clc
-    adc     #DIFF_PL_SPEED-1
-    cmp     #MAX_PL_SPEED+1
-    bcs     .skipPlayerSpeed
-    sta     playerSpeed
-.skipPlayerSpeed
-    lda     enemySpeed
-    clc
-    adc     #DIFF_EN_SPEED
-  IF MAX_EN_SPEED - 1 + DIFF_EN_SPEED < $100
-    cmp     #MAX_EN_SPEED
-  ENDIF
-    bcs     .skipEnemySpeed
-    sta     enemySpeed
-;    sta     bonusSpeed
-.skipEnemySpeed
-.skipIncSpeed
-  IF !TOP_SCORE
-    stx     scorePlayerIdx
-  ENDIF
-.skipIncSpeed2
-    ldy     levelLst,x
-    iny
-    cpy     #100
-    bcc     .incLevel
-    ldy     #100 - (1<<BONUS_SHIFT)*NUM_BONUS ; reset level to e.g. 68
-.incLevel
-    sty     levelLst,x
-; new line with random power-up & pellets:
-    jsr     SetupPowerPellets
-; reset bonus:
-    lda     levelLst,x
-    and     #BONUS_MASK     ; every 2nd/4th/8th level
-    bne     .skipBonus
-    jsr     NextRandom
-    and     Pot2Bit,x
-    eor     bonusLeft
-    sta     bonusLeft
-    ldy     #SCW/2-4        ; start bonus at center
-    sty     xBonusLst,x
-.skipBonus
-.skipCXPellet
-;.nextPlayer
-    ldx     .loopCnt
-    dex
-    bmi     .exitLoop
-    jmp     .loopPlayers
-
-.exitLoop
-.skipGameRunning
-
-.waitTim
-    lda     INTIM
-    bne     .waitTim
-; /OverScan
-    jmp     MainLoop
-
 ;---------------------------------------------------------------
 GameInit SUBROUTINE
 ;---------------------------------------------------------------
-  IF LARGE_POWER
-    lda     #%100000
-  ELSE
-    lda     #%010000
-  ENDIF
-    sta     CTRLPF
-
     ldx     #NUM_RESETS-1
     lda     #0
 .loopReset
@@ -2409,6 +2450,16 @@ Pot2Bit
     .byte   $01, $02, $04, $08, $10, $20, $40, $80
     CHECKPAGE Pot2Bit
 
+VarLevels
+    .byte   1, 11, 21
+PlayerSpeeds
+    .byte   INIT_PL_SPEED
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(11-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(21-1)
+EnemySpeeds
+    .byte   INIT_EN_SPEED
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(11-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(21-1)
 
 ; Bonus Scores:
 ; Pellet          10      1
