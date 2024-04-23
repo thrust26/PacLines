@@ -8,6 +8,8 @@
   LIST ON
 
 ; TODOs:
+; - RESET, SELECT?
+; ? game variations
 ; o game states
 ;   o %00, waiting (before start and at end of game)
 ;   o %10, start
@@ -193,7 +195,7 @@ ENEMY_PTS       = 10
 
 ; gameState constants:
 PLAYER_MASK     = $07
-;DEMO_MODE       = $08   ; TODO
+DEMO_MODE       = $08   ; TODO
 QT_RIGHT        = $10               ; bit 5==0: left QuadTari; bit 4==1: right QuadTari
 QT_LEFT         = $20
 QT_MASK         = QT_LEFT|QT_RIGHT
@@ -250,12 +252,12 @@ bonusSpeedSum   .byte
 ;---------------------------------------
 ; row bits:
 buttonBits      .byte       ; 1 = pressed
-playerDirs      .byte       ; 1 = left, 0 = right
-enemyDirs       .byte       ; 1 = left, 0 = right
-bonusDirs       .byte       ; 1 = left, 0 = right
-playerStates    .byte       ; 0 = alive, 1 = dead/score rolled  TODO
-playerHumans    .byte       ; 0 = human, 1 = AI TODO
-enemyStates     .byte       ; 0 = alive, 1 = eyes
+playerLeft      .byte       ; 1 = left, 0 = right
+enemyLeft       .byte       ; 1 = left, 0 = right
+bonusLeft       .byte       ; 1 = left, 0 = right
+playerDone      .byte       ; 0 = alive, 1 = dead/score rolled
+playerAI        .byte       ; 0 = human, 1 = AI
+enemyEyes       .byte       ; 0 = alive, 1 = eyes
 ;---------------------------------------
 powerTimLst     ds NUM_PLAYERS              ;  8 bytes
 ;---------------------------------------
@@ -620,7 +622,7 @@ DrawScreen SUBROUTINE
 ; *** draw lines between players ***
 ; setup player sprite direction:
     ldy     #8                  ; 2
-    and     playerDirs          ; 3
+    and     playerLeft          ; 3
     beq     .right0             ; 2/3
     NOP_B                       ; 1
 .right0
@@ -724,17 +726,22 @@ TIM_0a
     txs                         ; 2         store .loopCnt in SP
 ; setup player color pointer:
     ldy     #<HumanColMask      ; 2
-    lda     playerHumans        ; 3
+    lda     gameState           ; 3         display colors in demo mode
+    and     #GAME_MASK          ; 2
+    eor     #GAME_START         ; 2         GAME_START?
+    bne     .startMode          ; 2/3        no, color all sprites
+    lda     playerAI            ; 3
     and     Pot2Bit,x           ; 4
     cmp     #1                  ; 2         also sets AI state
+.startMode
     lda     LineCols,x          ; 4
     bcc     .brightLine         ; 2/3
     ldy     #<AIColMask         ; 2
     eor     #(LINE_LUM ^ AI_LUM); 2         -> lum == 2
 .brightLine                     ;
-    sta     .lineCol            ;   = 21/24
+    sta     .lineCol            ;   = ..35
     sty     .ptrCol0            ; 3 =  3
-TIM_0b  ; 61..65 (+3) cycles
+TIM_0b
     sta     WSYNC
 ;---------------------------------------
     sta     COLUBK              ; 3 =  3
@@ -745,7 +752,7 @@ TIM_0b  ; 61..65 (+3) cycles
     lda     xPlayerLst,x        ; 4         animate in sync with position (= speed based)
     and     #7                  ; 2
     tay                         ; 2
-    lda     playerDirs          ; 3
+    lda     playerLeft          ; 3
     and     Pot2Bit,x           ; 4
     bne     .playerLeft         ; 2/3
     iny                         ; 2         adjust animation when going right
@@ -755,7 +762,7 @@ TIM_0b  ; 61..65 (+3) cycles
 
 ;; setup player sprite direction:
 ;    ldy     #8-1                ; 2
-;    lda     playerDirs          ; 3
+;    lda     playerLeft          ; 3
 ;    and     Pot2Bit,x           ; 4
 ;    beq     .right0             ; 2/3
 ;    iny                         ; 2
@@ -763,7 +770,7 @@ TIM_0b  ; 61..65 (+3) cycles
 ;    sty     REFP0               ; 3 = 15/16 ;
 ;; constant timing code:
 ;    ldy     #7                  ; 2
-;    lda     playerDirs          ; 3
+;    lda     playerLeft          ; 3
 ;    and     Pot2Bit,x           ; 4
 ;    beq     .right0             ; 2/3
 ;    NOP_B                       ; 1
@@ -840,7 +847,7 @@ TIM_2a
 
 .drawEnemy                      ;
     lda     Pot2Bit,x           ; 4
-    bit     enemyStates         ; 3
+    bit     enemyEyes           ; 3
     bne     .drawEyes           ; 2/3= 9/10
 ; setup colors:
     lda     powerTimLst,x       ; 4
@@ -860,7 +867,7 @@ TIM_2a
     sty     .ptr1               ; 3 =  3
 ; setup enemy reflection:
     ldy     #8-1                ; 2
-    lda     enemyDirs           ; 3
+    lda     enemyLeft           ; 3
     and     Pot2Bit,x           ; 4
     beq     .setRefP1           ; 2/3
     iny                         ; 2         moving left
@@ -1228,6 +1235,7 @@ ContInitCart
 .waitingMode
     lda     gameState
     eor     #GAME_WAITING^GAME_START
+    and     #~DEMO_MODE
     sta     gameState
     lda     #5-2
     sta     scoreLoLst
@@ -1246,7 +1254,7 @@ ContInitCart
     dex
     bpl     .loopClear
     lda     #$ff
-    sta     playerHumans
+    sta     playerAI
 
 ; falls  through
 
@@ -1262,7 +1270,7 @@ ContInitCart
 
 ; if human, show pellets and powe-up while no button is pressed:
     ldy     #0
-    lda     playerHumans
+    lda     playerAI
     and     Pot2Bit,x
     bne     .notHuman
     jsr     SetupPellets
@@ -1287,9 +1295,9 @@ ContInitCart
     lda     SWCHA
     and     ButtonBit,x
     bne     .notPressed
-    lda     playerHumans
+    lda     playerAI
     and     Pot2Mask,x
-    sta     playerHumans
+    sta     playerAI
 ; hide pellets and power-up while button pressed
     lda     #$00
     sta     pf01LeftLst,x
@@ -1313,11 +1321,19 @@ ContInitCart
     lda     #60
     sta     frameCnt
     dec     scoreLoLst
-    bne     .skipRunningJmp
+    bne     .skipRunningJmp2
 ; switch to running state:
     lda     gameState
     eor     #GAME_START^GAME_RUNNING
     sta     gameState
+
+    lda     playerAI
+    cmp     #$ff
+    bne     .notDemoMode
+    lda     gameState           ; display colors in demo mode
+    ora     #DEMO_MODE
+    sta     gameState
+.notDemoMode
     ldx     #NUM_PLAYERS-1
 .loopReset
     jsr     SetupPellets
@@ -1332,6 +1348,7 @@ ContInitCart
     lda     #INIT_EN_SPEED
     sta     enemySpeed
 ;    sta     bonusSpeed
+.skipRunningJmp2
     jmp     .skipRunning
 
 ;---------------------------------------------------------------
@@ -1341,7 +1358,10 @@ ContInitCart
 .tmpSpeed       = tmpVars+3
 
 .startRunningMode
-    bvc     .startMode          ; GAME_START
+    bvs     .runningMode
+    jmp     .startMode          ; GAME_START
+
+.runningMode
     lda     #0
     sta     .playerSpeed
     lda     playerSpeed
@@ -1380,13 +1400,13 @@ ContInitCart
 
     ldx     #NUM_PLAYERS-1
 .loopMove
-    lda     playerStates
+    lda     playerDone
     and     Pot2Bit,x
     beq     .doMove
     jmp     .nextMove
 
 .doMove
-    lda     playerDirs
+    lda     playerLeft
     and     Pot2Bit,x
     cmp     #1
     lda     xPlayerLst,x
@@ -1408,12 +1428,12 @@ ContInitCart
 ; *** Enemy AI ***
     lda     .enemySpeed
     sta     .tmpSpeed
-    lda     enemyStates
+    lda     enemyEyes
     and     Pot2Bit,x
     beq     .alive
     asl     .tmpSpeed       ; eyes move at double enemy speed
 ; dead, eyes:
-    and     enemyDirs       ; continue moving into old direction
+    and     enemyLeft       ; continue moving into old direction
     beq     .posSpeedEyes
     bne     .negSpeedEyes
 
@@ -1430,13 +1450,13 @@ ContInitCart
     lda     xEnemyLst,x
     cmp     xPlayerLst,x
 .contSpecial
-    lda     enemyDirs
+    lda     enemyLeft
     ldy     powerTimLst,x
     bcs     .negSpeedEnemy
     bne     .negSpeedEnemyTim
 .posSpeedEnemyTim
     and     Pot2Mask,x
-    sta     enemyDirs
+    sta     enemyLeft
 .posSpeedEyes
     clc
     lda     xEnemyLst,x
@@ -1450,7 +1470,7 @@ ContInitCart
     bne     .posSpeedEnemyTim
 .negSpeedEnemyTim
     ora     Pot2Bit,x
-    sta     enemyDirs
+    sta     enemyLeft
 .negSpeedEyes
     sec
     lda     xEnemyLst,x
@@ -1459,9 +1479,9 @@ ContInitCart
     lda     #0
 .reviveEnemy
     tay
-    lda     enemyStates
+    lda     enemyEyes
     and     Pot2Mask,x
-    sta     enemyStates
+    sta     enemyEyes
     tya
 .setXEnemy
     sta     xEnemyLst,x
@@ -1473,7 +1493,7 @@ ContInitCart
     cmp     #X_BONUS_OFF        ; disabled bonus?
     beq     .skipBonus          ;  yes, do not move
     tay
-    lda     bonusDirs
+    lda     bonusLeft
     and     Pot2Bit,x
     cmp     #1
     tya
@@ -1506,7 +1526,7 @@ ContInitCart
 
 ;---------------------------------------------------------------
 ; check buttons:
-    lda     playerHumans
+    lda     playerAI
     and     Pot2Bit,x
     bne     .aiPlayer
     lda     SWCHA
@@ -1516,9 +1536,9 @@ ContInitCart
     bit     buttonBits
     bne     .skipReverseDir
 ; reverse direction
-    lda     playerDirs
+    lda     playerLeft
     eor     Pot2Bit,x
-    sta     playerDirs
+    sta     playerLeft
     lda     buttonBits
     ora     Pot2Bit,x           ; set button bit
     bne     .setBits
@@ -1537,13 +1557,13 @@ ContInitCart
     eor     frameCnt
     cmp     #$fe
     bcc     .skipReverseDirAI
-    lda     playerDirs
+    lda     playerLeft
     eor     Pot2Bit,x
-    sta     playerDirs
+    sta     playerLeft
 .skipReverseDirAI
 
   IF 0 ;{
-    lda     playerHumans
+    lda     playerAI
     and     Pot2Bit,x
     bne     .aiPlayer
     jmp     .nextMove
@@ -1653,15 +1673,15 @@ AiMoveAway
     bcs     .moveRight          ; enemy at right, move right
 ;    bcc     .moveLeft           ; enemy at left, move left
 .moveLeft
-    lda     playerDirs
+    lda     playerLeft
     ora     Pot2Bit,x
     bne     .setDir
 
 .moveRight
-    lda     playerDirs
+    lda     playerLeft
     and     Pot2Mask,x
 .setDir
-    sta     playerDirs
+    sta     playerLeft
     NOP_B
 .cont
     plp
@@ -1728,7 +1748,7 @@ PrepareDisplay SUBROUTINE
 ; count human players:
     ldx     #-1
     ldy     #NUM_PLAYERS-1
-    lda     playerHumans
+    lda     playerAI
 .loopCountHuman
     lsr
     bcs     .isAI
@@ -1895,7 +1915,14 @@ GetNthPlayerScore SUBROUTINE
 
 TIM_4a
     sta     .count
-    lda     playerHumans
+; display AI scores in demo mode:
+    lda     gameState
+    and     #DEMO_MODE
+    bne     .demoMode
+    lda     playerAI
+    NOP_W
+.demoMode
+    lda     #0
 .loopNthCount
     sta     .ignored        ;           ignore AI players
     sta     .tmpIgnored
@@ -1915,6 +1942,7 @@ TIM_5a
     cpy     .maxLo          ; 3
     bcc     .nextNthMax     ; 2/3
 .setNthMax
+    lda     scoreHiLst,x    ; 4
     ldy     scoreLoLst,x    ; 4
     sty     .maxLo          ; 3
 ;    stx     .player         ; 3
@@ -1965,9 +1993,13 @@ OverScan SUBROUTINE
     ldy     #0
     ldx     #NUM_PLAYERS-1
 .loopMax
-    lda     playerHumans            ; only human players increase speeds
+    lda     gameState
+    and     #DEMO_MODE
+    bne     .demoMode
+    lda     playerAI                ; only human players increase speeds
     and     Pot2Bit,x
     bne     .nextMax
+.demoMode
     tya
     cmp     levelLst,x
     bcs     .nextMax
@@ -2012,7 +2044,7 @@ OverScan SUBROUTINE
 
 .checkEnemy
     lda     Pot2Bit,x       ; already dead?
-    bit     enemyStates
+    bit     enemyEyes
     bne     .skipCXSprite   ;  yes, skip
 ; must overlap at least 4 pixels:
     lda     xPlayerLst,x
@@ -2026,12 +2058,12 @@ OverScan SUBROUTINE
     ldy     powerTimLst,x   ; power-up enabled?
     bne     .killEnemy      ;  yes, kill enemy
 ; kill player:
-    and     playerHumans
+    and     playerAI
     bne     .skipCXSprite
     lda     Pot2Bit,x
-    ora     playerStates
-    sta     playerStates
-    ora     playerHumans
+    ora     playerDone
+    sta     playerDone
+    ora     playerAI
     eor     #$ff
     bne     .skipCXSprite
     sta     lastButtons
@@ -2047,21 +2079,21 @@ OverScan SUBROUTINE
 
 .killEnemy
     lda     Pot2Bit,x
-    ora     enemyStates      ; -> eyes
-    sta     enemyStates
+    ora     enemyEyes        ; -> eyes
+    sta     enemyEyes
     lda     #ENEMY_PTS
     jsr     AddScoreLo
 ; set enemy escape direction:
     lda     xEnemyLst,x
     cmp     #SCW/2-4
-    lda     enemyDirs
+    lda     enemyLeft
     bcc     .runLeft
     ora     Pot2Bit,x
     bcs     .setEnemyDir
 .runLeft
     and     Pot2Mask,x
 .setEnemyDir
-    sta     enemyDirs
+    sta     enemyLeft
     lda     #0              ; disable power-up
     sta     powerTimLst,x
 .skipCXSprite
@@ -2120,9 +2152,13 @@ OverScan SUBROUTINE
     lda     levelLst,x
     cmp     .maxLevel
     bcc     .skipIncSpeed
-    lda     playerHumans    ; only human players increase speeds
+    lda     gameState
+    and     #DEMO_MODE
+    bne     .demoModeInc
+    lda     playerAI        ; only human players increase speeds
     and     Pot2Bit,x
     bne     .skipIncSpeed2
+.demoModeInc
     inc     .maxLevel
     lda     playerSpeed
 ;    clc
@@ -2161,8 +2197,8 @@ OverScan SUBROUTINE
     bne     .skipBonus
     jsr     NextRandom
     and     Pot2Bit,x
-    eor     bonusDirs
-    sta     bonusDirs
+    eor     bonusLeft
+    sta     bonusLeft
     ldy     #SCW/2-4        ; start bonus at center
     sty     xBonusLst,x
 .skipBonus
@@ -2219,16 +2255,16 @@ GameInit SUBROUTINE
 
 ; random initial directions:
 ;    jsr     NextRandom
-;    sta     playerDirs
+;    sta     playerLeft
 ; 1 randomly disabled player at the bottom:
 ;    jsr     NextRandom
 ;    and     #3              ; bottom 4 rows
 ;    tax
 ;    lda     Pot2Bit,x
 ;    lda     #$ff
-;    sta     playerHumans
-;    sta     playerStates
-;    sta     enemyStates
+;    sta     playerAI
+;    sta     playerDone
+;    sta     enemyEyes
 
     rts
 ; /GameInit
@@ -2245,11 +2281,16 @@ AddScore
     tya
     adc     scoreHiLst,x
     bcc     .setScore
+    lda     gameState
+    and     #DEMO_MODE
+    eor     #DEMO_MODE
+    beq     .demoMode
     lda     Pot2Bit,x       ; stop player
-    ora     playerStates
-    sta     playerStates
+    ora     playerDone
+    sta     playerDone
     lda     #$99            ; limit score to 9,999
     sta     scoreLoLst,x
+.demoMode
 .setScore
     sta     scoreHiLst,x
     cld
@@ -2530,16 +2571,16 @@ Letter_L
     .byte   %11000000
     .byte   %11000000
 Letter_V
-    .byte   %11000110
-    .byte   %11000110
-    .byte   %11100110
-    .byte   %11100110
-    .byte   %00110110
-    .byte   %00110110
-    .byte   %00110110
-    .byte   %00110110
-    .byte   %00000110
-    .byte   %00000110
+    .byte   %10001100
+    .byte   %10001100
+    .byte   %11001100
+    .byte   %11001100
+    .byte   %01101100
+    .byte   %01101100
+    .byte   %01101100
+    .byte   %01101100
+    .byte   %00001100
+    .byte   %00001100
 DotChar
     .byte   %11000000
     .byte   %11000000
