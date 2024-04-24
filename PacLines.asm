@@ -8,17 +8,11 @@
   LIST ON
 
 ; TODOs:
-; ? game variations
-; o game states
-;   o %00, waiting/select (before start and at end of game); TODO: level display
-;   o %10, start; TODO: level display
-;   + %11, running
-;   + %01, over (all human players killed)
 ; o demo mode
 ;   - automatic start
 ;   - stop with button press
 ; o difficulty ramp up
-;   - different start levels (e.g. 1, 5, 9; displayed left)
+;   + different start levels (e.g. 1, 5, 9; displayed with starting level)
 ;   x globally
 ;   x individually
 ;   + mixed (levels individual, speed global)
@@ -26,12 +20,12 @@
 ;     ? time
 ;     ? individual level
 ;     + global level
-;   - speeds
-;     ? by value or index (with table)
-;     - enemies slower than players at start
-;     - enemies accelerates faster than players
-;     - maximum speed for players and enemies
-;     - players reach maximum speed earlier than enemies
+;   + speeds
+;     + by value
+;     + enemies slower than players at start
+;     + enemies accelerates faster than players
+;     + maximum speed for players and enemies
+;     + players reach maximum speed earlier than enemies
 ; - AI
 ;   - player (not playing, controlled by AI)
 ; + bonus items
@@ -48,11 +42,6 @@
 ;   ? all 3 objects
 ;   + Enemy and Bonus?
 ;   ? Player and Enemies when Bonus arrives (player is never over a pellet)?
-; o display
-;   o score
-;     ? display top score
-;     ? display score of player which changed level last
-;     ? display score of player which set new maximum level
 ; - high score
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
@@ -84,12 +73,15 @@
 ;       enemy = 1
 ;       enemy = 2
 ;     - move to middle pellets after power pill
-; o display
-;   o score
+; + display
+;   + score
 ;     + color gradients
 ;     + level
 ;     + displayed player number
 ;     x hex score stored, converted to BCD (up to 65,535 instead 9,999)
+;     + display top score
+;     x display score of player which changed level last
+;     x display score of player which set new maximum level
 ; + bonus items
 ;   + based on current individual level
 ; + running enemies graphics/colors
@@ -106,6 +98,13 @@
 ;   + active player
 ;   + reverse direction
 ; + RESET, SELECT
+; + game variations (2x4)
+; + game states
+;   + %00, select (before start and at end of game); TODO: level display
+;   + %10, start; TODO: level display
+;   + %11, running
+;   + %01, over (all human players killed)
+
 
 
 ;===============================================================================
@@ -159,7 +158,7 @@ POWER_H         = 6
 SPRITE_W        = 8
 
 NUM_PLAYERS     = 8
-NUM_VARIATIONS  = 3         ; TODO
+NUM_VARIATIONS  = 8         ; TODO
 
 POWER_TIM       = 140
 
@@ -197,24 +196,27 @@ POWER_PTS       = 5
 ENEMY_PTS       = 10
 
 ; gameState constants:
-VAR_MASK        = $03       ; game variation TODO
-DEBOUNCE        = $04
+DIFF_MASK       = $03       ; game variation TODO
+BONUS_GAME      = $04       ; TODO
+VAR_MASK        = DIFF_MASK|BONUS_GAME
 DEMO_MODE       = $08
 QT_RIGHT        = $10       ; bit 5==0: left QuadTari; bit 4==1: right QuadTari
 QT_LEFT         = $20
 QT_MASK         = QT_LEFT|QT_RIGHT
-GAME_WAITING    = $00
+GAME_SELECT     = $00
 GAME_START      = $80
 GAME_RUNNING    = $c0
 GAME_OVER       = $40
 GAME_MASK       = $c0
 
-;Wait -> press & release -> Start -> 5s -> Run -> Over -> 2s -> press & release -> Wait
+;Select -> press & release -> Start -> 5s -> Run -> Over -> 2s -> press & release -> Select
 
-; 00 = waiting/select?
+; 00 = select?
 ; 10 = game start, select active players
 ; 11 = game running
 ; 01 = Game over, display scores of human players
+
+DEBOUNCE        = $80
 
 NUM_TMPS        = 6
 STACK_SIZE      = 6                 ; used in score & kernel row setup
@@ -227,12 +229,13 @@ STACK_SIZE      = 6                 ; used in score & kernel row setup
     SEG.U   variables
     ORG     $80
 
-frameCnt        .byte       ; even: enemy drawn, odd: bonus drawn
+frameCnt        .byte               ; even: enemy drawn, odd: bonus drawn
 randomLo        .byte
   IF RAND16 ;{
 randomHi        .byte
   ENDIF ;}
-gameState       .byte       ; ..rL.PPP      Right/Left QuadTari, P (score displayed when game is over)
+gameState       .byte               ; MMrLDBVV  Mode, Right/Left QuadTari, Demo, Bonus, Variation
+debounce        .byte               ; D.......  Debounce ; TODO: = powerTimLst?
 ;---------------------------------------
 levelLst        ds  NUM_PLAYERS
 ;---------------------------------------
@@ -241,7 +244,7 @@ xEnemyLst       ds  NUM_PLAYERS
 xBonusLst       ds  NUM_PLAYERS
 xPowerLst       ds  NUM_PLAYERS
 ;---------------------------------------
-playerAI        .byte       ; 0 = human, 1 = AI
+playerAI        .byte               ; 0 = human, 1 = AI
 ;---------------------------------------
 resetLst        = .
 pfLst           ds  NUM_PLAYERS*3           ; 24 bytes
@@ -254,20 +257,20 @@ playerSpeed     .byte
 playerSpeedSum  .byte
 enemySpeed      .byte
 enemySpeedSum   .byte
-bonusSpeed      = enemySpeed                ; TODO: eliminate if bonus speed is always 50% of enemy speed
+bonusSpeed      = enemySpeed        ; TODO: eliminate if bonus speed is always 50% of enemy speed
 bonusSpeedSum   .byte
 ; reused:
-lastButtons     = playerSpeed       ; BBBBBBBB  reused during GAME_WAITING & GAME_OVER
+lastButtons     = playerSpeed       ; BBBBBBBB  reused during GAME_SELECT & GAME_OVER
 waitedOver      = playerSpeedSum    ; ......WW  reused during GAME_OVER
-playerIdx       = enemySpeed        ; .....PPP  reused during GAME_OVER
+playerIdx       = enemySpeed        ; .....PPP  reused during GAME_OVER (score displayed when game is over)
 ;---------------------------------------
 ; row bits:
-buttonBits      .byte       ; 1 = pressed
-playerLeft      .byte       ; 1 = left, 0 = right
-enemyLeft       .byte       ; 1 = left, 0 = right
-bonusLeft       .byte       ; 1 = left, 0 = right
-playerDone      .byte       ; 0 = alive, 1 = dead/score rolled
-enemyEyes       .byte       ; 0 = alive, 1 = eyes
+buttonBits      .byte               ; 1 = pressed
+playerLeft      .byte               ; 1 = left, 0 = right
+enemyLeft       .byte               ; 1 = left, 0 = right
+bonusLeft       .byte               ; 1 = left, 0 = right
+playerDone      .byte               ; 0 = alive, 1 = dead/score rolled
+enemyEyes       .byte               ; 0 = alive, 1 = eyes
 ;---------------------------------------
 powerTimLst     ds NUM_PLAYERS              ;  8 bytes
 ;---------------------------------------
@@ -276,11 +279,12 @@ scoreLoLst      = scoreLst
 scoreHiLst      = scoreLst+NUM_PLAYERS
 NUM_RESETS      = . - resetLst
   IF !TOP_SCORE
-scorePlayerIdx  .byte                       ; index of displayed score's player
+scorePlayerIdx  .byte               ; index of displayed score's player
   ENDIF
+countDown       = scoreLoLst        ; reused during GAME_START
 ;---------------------------------------
-cxPelletBits    .byte                       ; temporary
-cxSpriteBits    .byte                       ; temporary
+cxPelletBits    .byte               ; temporary
+cxSpriteBits    .byte               ; temporary
 
 RAM_END         = .
 
@@ -469,6 +473,7 @@ PlayerCol ; align LineCols!
     .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
     .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
   ENDIF
+    .byte   WHITE   ; score display
     CHECKPAGE PlayerCol
 
 ;EnemyPtr
@@ -1113,8 +1118,8 @@ Start SUBROUTINE
     lsr                     ; 2
     lsr                     ; 2
     and     #QT_MASK        ; 2
-  IF GAME_WAITING
-    ora     #GAME_WAITING
+  IF GAME_SELECT
+    ora     #GAME_SELECT
   ENDIF
     jmp     ContInitCart
 ;---------------------------------------------------------------
@@ -1136,7 +1141,7 @@ OverScan SUBROUTINE
 
     bit     gameState
     bmi     .startRunningMode       ; GAME_RUNNING|GAME_OVER
-.notRunning                         ; GAME_WAITING|GAME_START|GAME_OVER
+.notRunning                         ; GAME_SELECT|GAME_START|GAME_OVER
     jmp     .skipGameRunning
 
 .startRunningMode
@@ -1343,16 +1348,20 @@ OverScan SUBROUTINE
 ; new line with random power-up & pellets:
     jsr     SetupPowerPellets
 ; reset bonus:
+    ldy     #X_BONUS_OFF    ; disable bonus
+    lda     gameState
+    and     #BONUS_GAME
+    beq     .skipBonus
     lda     levelLst,x
-    and     #BONUS_MASK     ; every 2nd/4th/8th level
+    and     #BONUS_MASK     ; every 4th level
     bne     .skipBonus
     jsr     NextRandom
     and     Pot2Bit,x
     eor     bonusLeft
     sta     bonusLeft
     ldy     #SCW/2-4        ; start bonus at center
-    sty     xBonusLst,x
 .skipBonus
+    sty     xBonusLst,x
 .skipCXPellet
 ;.nextPlayer
     ldx     .loopCnt
@@ -1386,49 +1395,28 @@ VerticalBlank SUBROUTINE
   ENDIF
     sta     TIM64T
 
-; this saves 2 byte:
-;    lda     SWCHB
-;    and     #%11
-;    cmp     #%11
-;    beq     .skipResetSelect
-;    pha
-;    jsr     GameInit
-;    pla
-;    lsr
-;    lda     gameState
-;    and     #QT_MASK
-;    bcs     .skipReset1
-;    ora     #GAME_RUNNING
-;    jmp     .contReset
-;
-;.skipReset1
-;    ora     #GAME_WAITING
-;    sta     gameState
-;.skipResetSelect
-DEBUG0
+; *** check console switches ***
     lda     SWCHB
     and     #%11
     cmp     #%11
     bcs     .notSwitched
-    lsr
-    lda     #DEBOUNCE
-    bit     gameState
-    bne     .skipSwitches
-    ora     gameState
-    sta     gameState
-    php
+    lsr                         ; put RESET bit into carry
+    lda     debounce            ; DEBOUNCE?
+    bmi     .skipSwitches
+    ora     #DEBOUNCE
+    sta     debounce
+    php                         ; remember RESET bit
     jsr     GameInit
-    plp
+    plp                         ; restore RESET bit
     lda     gameState
     and     #~GAME_MASK
-    ora     #GAME_WAITING
+    ora     #GAME_SELECT
+    sta     gameState
     bcs     .select
-    eor     #GAME_WAITING^GAME_RUNNING
     jmp     .contReset
 
 .select
-    sta     gameState
-    and     #VAR_MASK
+    and     #VAR_MASK           ; increase game variation
     tay
     iny
     cpy     #NUM_VARIATIONS
@@ -1439,49 +1427,25 @@ DEBUG0
     eor     gameState
     and     #VAR_MASK
     eor     gameState
-DEBUG1
-    bne     .setGameState
+    sta     gameState
+    bpl     .skipSwitches
     DEBUG_BRK
 
 .notSwitched
-    lda     gameState
+    lda     debounce
     and     #~DEBOUNCE
-.setGameState
-    sta     gameState
+    sta     debounce
 .skipSwitches
     bit     gameState
-    bpl     .waitingOverMode
+    bpl     .selectOverMode
     jmp     .startRunningMode   ; GAME_START|GAME_RUNNING
-
-
-;    lda     SWCHB
-;    lsr
-;    bcs     .skipReset
-;    jsr     GameInit
-;    lda     gameState
-;    and     #QT_MASK
-;    ora     #GAME_RUNNING
-;    jmp     .contReset
-;
-;.skipReset
-;    lsr
-;    bcs     .skipSelect
-;    jsr     GameInit
-;    lda     gameState
-;    and     #QT_MASK
-;    ora     #GAME_WAITING
-;    sta     gameState
-;
-;.skipSelect
-;    bit     gameState
-;    bpl     .waitingOverMode
-;    jmp     .startRunningMode   ; GAME_START|GAME_RUNNING
 
 ;---------------------------------------------------------------
 ; check all buttons for pressed and released:
 .tmpButtons = tmpVars
 
-.waitingOverMode
+.selectOverMode
+    bvc     .selectMode         ; GAME_SELECT
     lda     SWCHA
     ldy     #$82
     sta     WSYNC
@@ -1506,12 +1470,12 @@ DEBUG1
     tya
     bne     .skipRunningJmp
 ;    bit     gameState
-    bvc     .waitingMode    ; GAME_WAITING
+    ;bvc     .selectMode         ; GAME_SELECT
 ; GAME_OVER
     lda     waitedOver          ; waited for display of 1st score?
     bne     .skipRunningJmp     ;  no, continue
-    lda     gameState           ;  yes, switch to GAME_WAITING
-    eor     #GAME_OVER^GAME_WAITING
+    lda     gameState           ;  yes, switch to GAME_SELECT
+    eor     #GAME_OVER^GAME_SELECT
 ContInitCart
     sta     gameState
     jsr     GameInit
@@ -1520,13 +1484,14 @@ ContInitCart
 
 ;---------------------------------------------------------------
 ; wait for button release & press to switch to start
-.waitingMode
+.selectMode
+.contReset
     lda     gameState
-    eor     #GAME_WAITING^GAME_START
+    eor     #GAME_SELECT^GAME_START
     and     #~DEMO_MODE
     sta     gameState
-    lda     #5-2
-    sta     scoreLoLst
+    lda     #COUNT_START
+    sta     countDown
     lda     #60
     sta     frameCnt
 
@@ -1608,8 +1573,8 @@ ContInitCart
     bne     .skipRunningJmp2
     lda     #60
     sta     frameCnt
-    dec     scoreLoLst
-    bpl     .skipRunningJmp2
+    dec     countDown
+    bne     .skipRunningJmp2
 ; switch to running state:
 ; restore power-up:
     ldx     #NUM_PLAYERS-1
@@ -1621,20 +1586,17 @@ ContInitCart
     sta     .tmpXPowerLst,x
     dex
     bpl     .loopReset
-; switch to running mode
-    lda     gameState
-    eor     #GAME_START^GAME_RUNNING
-.contReset
-    sta     gameState
 ; intialize demo mode & speeds:
     lda     playerAI
     cmp     #$ff
     lda     gameState           ; display colors in demo mode
     bcc     .notDemoMode
     ora     #DEMO_MODE
-    sta     gameState
 .notDemoMode
-    and     #VAR_MASK
+; switch to running mode
+    eor     #GAME_START^GAME_RUNNING
+    sta     gameState
+    and     #DIFF_MASK
     tay
 ;    lda     #INIT_PL_SPEED
     lda     PlayerSpeeds,y
@@ -2039,7 +2001,7 @@ PrepareDisplay SUBROUTINE
 
     bit     gameState
     bmi     .startRunningMode       ; GAME_START|GAME_RUNNING
-    bvc     .waitingMode            ; GAME_WAITING
+    bvc     .selectMode             ; GAME_SELECT
 ;---------------------------------------------------------------
 ; GAME_OVER
 
@@ -2077,28 +2039,47 @@ PrepareDisplay SUBROUTINE
     sec
     sbc     .count
     sta     .number             ; displayed rank - 1
+    inc     .number
     jsr     GetNthPlayerScore
     ldy     #ID_DOT
     sty     .numberDigit
     lda     #60
     bne     .contGameOver
 ;---------------------------------------------------------------
-.waitingMode
-    lda     #0                  ; TODO: game variation?
-    NOP_W
+.selectMode
+; display bonus mode and level (B.LvLL):
+    ldx     #8
+    stx     .player
+    ldy     #ID_BLANK
+    lda     gameState
+    and     #BONUS_GAME
+    beq     .noBonus
+    ldy     #ID_BONUS
+.noBonus
+    sty     .number
+    lda     gameState
+    and     #DIFF_MASK          ; game variation diff
+    tay
+    lda     VarLevels,y
+    bne     .contSelectMode
 ---------------------------------------------------------------
 .startMode
-    lda     scoreLoLst
-.contWaitingMode
-    sta     .scoreLo
-    lda     gameState
-    and     #VAR_MASK           ; game variation
-    sta     .number
-    lda     #0
-    sta     .scoreMid
+; display countdown (------)
     lda     #WHITE
-    ldx     #7
-    bpl     .displayScoreCol
+    sta     .scoreCol
+    ldy     countDown
+    lda     StartLoIds-1,y
+    sta     .scoreLo
+    lda     StartMidIds-1,y
+    sta     .scoreMid
+    lda     StartHiIds-1,y
+; display countdown (.....C)
+;    lda     countDown
+;    sta     .scoreLo
+;    lda     #0
+;    sta     .scoreMid
+;    lda     #ID_BLANK<<4|ID_BLANK
+    bne     .contStartMode
 ;---------------------------------------------------------------
 .startRunningMode
     bvc     .startMode
@@ -2112,6 +2093,7 @@ PrepareDisplay SUBROUTINE
     txa
     eor     #$07
     sta     .number             ; displayed player number - 1
+    inc     .number
     lda     #$55                ; 2/3 score, 1/3 level
 .contGameOver
     cmp     frameCnt
@@ -2121,9 +2103,8 @@ PrepareDisplay SUBROUTINE
     sta     .scoreMid
     bcc     .displayScore
 ; display level:
-    lda     #ID_LETTER_L<<4|ID_LETTER_V
-    sta     .scoreMid
     lda     levelLst,x
+.contSelectMode
     HEX2BCD
     cmp     #$10
     bcs     .largeLevel
@@ -2135,17 +2116,18 @@ PrepareDisplay SUBROUTINE
   ELSE
     ldx     scorePlayerIdx
   ENDIF
+    lda     #ID_LETTER_L<<4|ID_LETTER_V
+    sta     .scoreMid
 .displayScore
     lda     PlayerCol,x
-.displayScoreCol
     sta     .scoreCol
-    lda     .number         ; display variation, player number or rank (game over)
+    lda     .number         ; display bonus, player number or rank (game over)
     asl
     asl
     asl
     asl
-    adc     #$10
     ora     .numberDigit
+.contStartMode
     sta     .scoreHi
 ; setup score into score pointers:
     ldx     #(6-1)*2
@@ -2450,16 +2432,23 @@ Pot2Bit
     .byte   $01, $02, $04, $08, $10, $20, $40, $80
     CHECKPAGE Pot2Bit
 
+LVL_0   = 1    ; all must not divide by 4!
+LVL_1   = 7
+LVL_2   = 14
+LVL_3   = 22
+
 VarLevels
-    .byte   1, 11, 21
+    .byte   LVL_0, LVL_1, LVL_2, LVL_3
 PlayerSpeeds
-    .byte   INIT_PL_SPEED
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(11-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(21-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
 EnemySpeeds
-    .byte   INIT_EN_SPEED
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(11-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(21-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
 
 ; Bonus Scores:
 ; Pellet          10      1
@@ -2490,6 +2479,30 @@ ButtonBit
     .byte   %01000000
     .byte   %10000000
   CHECKPAGE ButtonBit
+
+
+StartLoIds
+    .byte   ID_BLANK<<4|ID_BLANK
+    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_PELLET
+StartMidIds
+    .byte   ID_BLANK<<4|ID_BLANK
+    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_PELLET
+;    .byte   ID_PELLET<<4|ID_PELLET
+;    .byte   ID_PELLET<<4|ID_PELLET
+StartHiIds
+    .byte   ID_PELLET<<4|ID_BLANK
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+COUNT_START = . - StartHiIds
 
     .byte   "QUADTARI"
 
@@ -2632,29 +2645,49 @@ Letter_V
     .byte   %01101100
     .byte   %00001100
     .byte   %00001100
+BonusGfx
+    .byte   %00000100
+    .byte   %01001010
+    .byte   %10101110
+    .byte   %11101110
+    .byte   %11100100
+    .byte   %01000000
+    .byte   %00000100
+    .byte   %00110110
+    .byte   %00011010
+    .byte   %00000110
+PelletChar
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00011000
+    .byte   %00111100
+    .byte   %00111100
+    .byte   %00111100
+    .byte   %00111100
+    .byte   %00011000
+    .byte   %00000000
+    .byte   %00000000
 DotChar
     .byte   %11000000
     .byte   %11000000
-    .byte   %11000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-
+;    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %00000000
+Blank
+    ds      GFX_H - (GFX_H-POWER_H)/2, 0
 EnaBlTbl                ; can be overlapped with PearGfx
     ds      (GFX_H-POWER_H)/2, 0
 ;    ds      1, %10
 ;    ds      4, 0
-    ds      6, %10
-;    ds      POWER_H, %10
-;    ds      (GFX_H-POWER_H)/2, 0
-Blank
-    ds      GFX_H, 0
-    CHECKPAGE EnaBlTbl
-;    ds      FONT_H, 0
+;    ds      1, %10
+    ds      POWER_H, %10
+    ds      (GFX_H-POWER_H)/2, 0
+
     CHECKPAGE_DATA_LBL DigitGfx, "DigitGfx"
 
 
@@ -2673,6 +2706,10 @@ ID_LETTER_V = . - DigitPtr
     .byte   <Letter_V
 ID_DOT = . - DigitPtr
     .byte   <DotChar
+ID_BONUS = . - DigitPtr
+    .byte   <BonusGfx
+ID_PELLET = . - DigitPtr
+    .byte   <PelletChar
 
 HMoveTbl
 ; this is calculated with 1 cycle extra on access
@@ -2687,6 +2724,8 @@ HMoveTbl
   ENDIF
 
     .byte   "JTZ"
+
+    ALIGN_FREE_LBL 256, "PfColTbl"
 
 PfColTbl = . - (GFX_H-POWER_H)/2 - 4
 PowerStart
