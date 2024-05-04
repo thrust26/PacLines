@@ -8,56 +8,57 @@
   LIST ON
 
 ; TODOs:
+; - sound
 ; o demo mode
+;   + when no player got activated during start
 ;   - automatic start
 ;   - stop with button press
-; o difficulty ramp up
-;   + different start levels (e.g. 1, 5, 9; displayed with starting level)
-;   x globally
-;   x individually
-;   + mixed (levels individual, speed global)
-;   o trigger
-;     ? time
-;     ? individual level
-;     + global level
-;   + speeds
-;     + by value
-;     + enemies slower than players at start
-;     + enemies accelerates faster than players
-;     + maximum speed for players and enemies
-;     + players reach maximum speed earlier than enemies
 ; - AI
 ;   - player (not playing, controlled by AI)
-; + bonus items
-;   ? when should they appear?
-;     + either at start of new level (delayed?)
-;     ? or when power-up gets collected (disapear at next level)
-;   ? when shoud bonuses disappear?
-;     ? disappear at border
-;     ? when power-up gets eaten
-;     + when level is finished
-;     ? never (when eaten or new bonus appears)
 ; ? larger power-up pellet
 ; o flicker
 ;   ? all 3 objects
 ;   + Enemy and Bonus?
 ;   ? Player and Enemies when Bonus arrives (player is never over a pellet)?
-; - high score
+; o high score
+;   + score and level
+;   + determine
+;   - play sound for new high score
+;   o reset
+;     o when game variation changes
+;     - keep for same variation as high score
+;   o display
+;   - save (PlusROM, SaveKey)
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
-; - dead player graphics
+; - better player animation
+;   + alive, based on pos
+;   - dead, based on id, where to store??? (xBonusLst?)
 ; - alternative theme
 ;   ? robots
 ;   ? animals
 ;   ? spaceships
 ;   ? cars (police?)
 ;   ? abstract
-;   ?
+;   ? ...
 
 ; DONEs:
-; o difficulty ramp up
-;   o speeds
+; + difficulty ramp up
+;   + speeds
 ;     + enemies and players seperately
+;     + by value
+;     + enemies slower than players at start
+;     + enemies accelerates faster than players
+;     + maximum speed for players and enemies
+;     + players reach maximum speed earlier than enemies
+;   + different start levels (e.g. 1, 5, 9; displayed with starting level)
+;   x globally
+;   x individually
+;   + mixed (levels individual, speed global)
+;   + trigger
+;     x time
+;     x individual level
+;     + global level (human players only)
 ; + AI
 ;   + enemies (following player)
 ;     + hunting: move to player (no wrapping)
@@ -69,9 +70,6 @@
 ;       dist to border opposite of enemy/player speed < dist of ghost/enemy speed
 ;       (dP/sP < dE/sE => dP*sE < dE*sP)
 ;     - simplyfied: reverse at 8 - dist enemy from its border
-;       enemy = 0
-;       enemy = 1
-;       enemy = 2
 ;     - move to middle pellets after power pill
 ; + display
 ;   + score
@@ -84,6 +82,14 @@
 ;     x display score of player which set new maximum level
 ; + bonus items
 ;   + based on current individual level
+;   + when should they appear?
+;     + either at start of new level (delayed?)
+;     x or when power-up gets collected (disapear at next level)
+;   + when shoud bonuses disappear?
+;     x disappear at border
+;     x when power-up gets eaten
+;     + when level is finished
+;     x never (when eaten or new bonus appears)
 ; + running enemies graphics/colors
 ; + align collecting animation with pellets (sync animation with position)
 ; + delay ghost/bonus collisions (at least 50% overlapping)
@@ -262,7 +268,7 @@ bonusSpeedSum   .byte
 ; reused:
 lastButtons     = playerSpeed       ; BBBBBBBB  reused during GAME_SELECT & GAME_OVER
 waitedOver      = playerSpeedSum    ; ......WW  reused during GAME_OVER
-playerIdx       = enemySpeed        ; .....PPP  reused during GAME_OVER (score displayed when game is over)
+playerIdx       = enemySpeed        ; ....PPPP  reused during GAME_OVER (score displayed when game is over)
 ;---------------------------------------
 ; row bits:
 buttonBits      .byte               ; 1 = pressed
@@ -278,6 +284,10 @@ scoreLst        ds  NUM_PLAYERS*2           ; 16 bytes
 scoreLoLst      = scoreLst
 scoreHiLst      = scoreLst+NUM_PLAYERS
 NUM_RESETS      = . - resetLst
+hiScoreLst      ds  3
+hiScoreLo       = hiScoreLst
+hiScoreHi       = hiScoreLst+1
+hiScoreLvl      = hiScoreLst+2
   IF !TOP_SCORE
 scorePlayerIdx  .byte               ; index of displayed score's player
   ENDIF
@@ -795,12 +805,12 @@ TIM_0b
 
 ; setup power-up pointer:
     ldy     #2                  ; 2
+    lda     #0                  ; 2
 TIM_1b  ; 17..18 (+6) cycles
     sta     WSYNC               ; 3 =  5
 ;---------------------------------------
     sta     HMOVE               ; 3
 TIM_2a
-    lda     #0                  ; 2
     sta     COLUBK              ; 3
     lda     xPowerLst,x         ; 4
     bne     .showPower          ; 2/3
@@ -889,8 +899,9 @@ TIM_2a
 .setRefP1
     sty     REFP1               ; 3 = 14
 ; setup some high-pointer:
-    lda     #>SpriteGfx         ; 2
+    lda     #>PlayerGfx         ; 2
     sta     .ptr0+1             ; 3
+    lda     #>EnemyGfx          ; 2
     sta     .ptr1+1             ; 3
     lda     #>ColorTbls         ; 2
     sta     .ptrCol1+1          ; 3
@@ -1182,7 +1193,7 @@ OverScan SUBROUTINE
     sbc     xBonusLst,x
     adc     #4
     cmp     #4*2
-    bcs     .skipCXSprite
+    bcs     .skipCXSpriteJmp
     lda     #X_BONUS_OFF
     sta     xBonusLst,x
     lda     levelLst,x
@@ -1222,16 +1233,34 @@ OverScan SUBROUTINE
     ora     playerAI
     eor     #$ff
     bne     .skipCXSprite
+; game over, display scores:
     sta     lastButtons
     sta     frameCnt
     sta     playerIdx
     lda     #2
     sta     waitedOver
+; check for new high score:
+    lda     gameState
+    and     #DEMO_MODE
+    bne     .skipHiScore
+    jsr     Get1stPlayerScore   ; get for largest score
+    ldy     scoreLoLst,x        ; player in X
+    lda     scoreHiLst,x
+    cmp     hiScoreHi
+    bcc     .skipHiScore
+    bne     .setHiScore
+    cpy     hiScoreLo
+    bcc     .skipHiScore
+.setHiScore
+    sty     hiScoreLo
+    sta     hiScoreHi
+    lda     levelLst,x
+    sta     hiScoreLvl
+.skipHiScore
     lda     gameState
     eor     #GAME_RUNNING^GAME_OVER
     sta     gameState
-    bne     .skipCXSprite
-    DEBUG_BRK
+    jmp     .exitLoop
 
 .killEnemy
     lda     Pot2Bit,x
@@ -1428,8 +1457,13 @@ VerticalBlank SUBROUTINE
     and     #VAR_MASK
     eor     gameState
     sta     gameState
+; reset highscore when game variation changes:
+    lda     #0
+    sta     hiScoreLo
+    sta     hiScoreHi
+    sta     hiScoreLvl
     bpl     .skipSwitches
-    DEBUG_BRK
+;    DEBUG_BRK
 
 .notSwitched
     lda     debounce
@@ -1445,7 +1479,6 @@ VerticalBlank SUBROUTINE
 .tmpButtons = tmpVars
 
 .selectOverMode
-    bvc     .selectMode         ; GAME_SELECT
     lda     SWCHA
     ldy     #$82
     sta     WSYNC
@@ -1466,11 +1499,11 @@ VerticalBlank SUBROUTINE
     sty     lastButtons
 ; released: new buttons != last buttons && buttons == 0 (all released)
 ; wait for button release & press to switch
+;    bit     gameState
+    bvc     .checkSelectMode
     beq     .skipRunningJmp
     tya
     bne     .skipRunningJmp
-;    bit     gameState
-    ;bvc     .selectMode         ; GAME_SELECT
 ; GAME_OVER
     lda     waitedOver          ; waited for display of 1st score?
     bne     .skipRunningJmp     ;  no, continue
@@ -1482,9 +1515,10 @@ ContInitCart
 .skipRunningJmp
     jmp     .skipRunning
 
+.checkSelectMode
+    beq     .skipRunningJmp
 ;---------------------------------------------------------------
 ; wait for button release & press to switch to start
-.selectMode
 .contReset
     lda     gameState
     eor     #GAME_SELECT^GAME_START
@@ -1508,6 +1542,7 @@ ContInitCart
     bpl     .loopClear
     lda     #$ff
     sta     playerAI
+    bne     .skipRunningJmp ; skip checking both QuadTaris this frame again
 
 ; falls  through
 
@@ -1971,6 +2006,17 @@ AiMoveAway
 ;---------------------------------------------------------------
 PrepareDisplay SUBROUTINE
 ;---------------------------------------------------------------
+; Display:
+; - GAME_RUNNING:
+;   - 1st player's score and level (alternating)
+; - GAME_OVER:
+;   - nth player's score and level (alternating)
+;   - high score
+; - GAME_SELECT
+;   - start level and fruits
+;   - TODO: high score (if saved)
+; - GAME_START
+;   - count down
 
 ; ******************** Setup Score ********************
 .maxLo          = tmpVars
@@ -2030,9 +2076,30 @@ PrepareDisplay SUBROUTINE
     dex
     bpl     .skipReset
     ldx     .countHuman
+    inx                         ; display high score
 .skipReset
     stx     playerIdx
 .sameRank
+; check for high score display:
+    cpx     .countHuman
+    beq     .notHighScore
+    bcc     .notHighScore
+    ldx     #NUM_PLAYERS
+    stx     .player
+    lda     #60
+    cmp     frameCnt
+.displayHighScore
+    lda     #ID_LETTER_H
+    sta     .number
+    lda     #ID_LETTER_I
+    sta     .numberDigit
+    lda     hiScoreLo
+    ldy     hiScoreHi
+    bcc     .contDisplayHighScore
+    lda     hiScoreLvl
+    bcs     .contDisplayHighLevel
+
+.notHighScore
     stx     .count
 ; select n-largest score to display:
     lda     .countHuman
@@ -2050,6 +2117,9 @@ PrepareDisplay SUBROUTINE
 ; display bonus mode and level (B.LvLL):
     ldx     #8
     stx     .player
+;    lda     #60
+;    cmp     frameCnt
+;    bcc     .displayHighScore
     ldy     #ID_BLANK
     lda     gameState
     and     #BONUS_GAME
@@ -2063,6 +2133,8 @@ PrepareDisplay SUBROUTINE
     lda     VarLevels,y
     bne     .contSelectMode
 ---------------------------------------------------------------
+.startRunningMode
+    bvs     .runningMode
 .startMode
 ; display countdown (------)
     lda     #WHITE
@@ -2081,12 +2153,10 @@ PrepareDisplay SUBROUTINE
 ;    lda     #ID_BLANK<<4|ID_BLANK
     bne     .contStartMode
 ;---------------------------------------------------------------
-.startRunningMode
-    bvc     .startMode
+.runningMode
   IF TOP_SCORE
 ; determine player with maximum score:
-    lda     #0                  ; get for largest score
-    jsr     GetNthPlayerScore
+    jsr     Get1stPlayerScore   ; get for largest score
   ELSE
     ldx     scorePlayerIdx      ; last scoring player
   ENDIF
@@ -2098,12 +2168,14 @@ PrepareDisplay SUBROUTINE
 .contGameOver
     cmp     frameCnt
     lda     scoreLoLst,x
+    ldy     scoreHiLst,x
+.contDisplayHighScore
     sta     .scoreLo
-    lda     scoreHiLst,x
-    sta     .scoreMid
+    sty     .scoreMid
     bcc     .displayScore
 ; display level:
     lda     levelLst,x
+.contDisplayHighLevel
 .contSelectMode
     HEX2BCD
     cmp     #$10
@@ -2153,7 +2225,7 @@ PrepareDisplay SUBROUTINE
     NOP_IMM
 .skipHiZero
     clv
-    lda     DigitPtr,y
+    lda     LeftDigitPtr,y
     sta     .scorePtrLst,x
     dex
     dex
@@ -2168,7 +2240,7 @@ PrepareDisplay SUBROUTINE
     NOP_IMM
 .skipLoZero
     clv
-    lda     DigitPtr,y
+    lda     RightDigitPtr,y
     sta     .scorePtrLst,x
     dex
     dex
@@ -2184,8 +2256,10 @@ PrepareDisplay SUBROUTINE
     jmp     DrawScreen
 
 ;---------------------------------------------------------------
-GetNthPlayerScore SUBROUTINE
+Get1stPlayerScore SUBROUTINE
 ;---------------------------------------------------------------
+    lda     #0
+GetNthPlayerScore
 ; A = n-1
 
 .maxLo      = tmpVars
@@ -2508,7 +2582,7 @@ COUNT_START = . - StartHiIds
 
     ALIGN_FREE_LBL 256, "DigitGfx"
 
-DigitGfx
+DigitGfx ; font is "Level-Up"
 Four
     .byte   %00001100
     .byte   %00001100
@@ -2645,6 +2719,28 @@ Letter_V
     .byte   %01101100
     .byte   %00001100
     .byte   %00001100
+Letter_H
+    .byte   %01100110
+    .byte   %01100110
+    .byte   %01100110
+    .byte   %01100110
+    .byte   %01111110
+    .byte   %01111110
+    .byte   %01100110
+    .byte   %01100110
+    .byte   %01100110
+    .byte   %01100110
+Letter_I
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %00000000
+    .byte   %11000000
+    .byte   %11000000
 BonusGfx
     .byte   %00000100
     .byte   %01001010
@@ -2691,25 +2787,7 @@ EnaBlTbl                ; can be overlapped with PearGfx
     CHECKPAGE_DATA_LBL DigitGfx, "DigitGfx"
 
 
-    .byte   " Pac-Lines x 8 - Demo V"
-    VERSION_STR
-    .byte   " - (C) 2024 Thomas Jentzsch "
 
-DigitPtr
-    .byte   <Zero, <One, <Two, <Three, <Four
-    .byte   <Five, <Six, <Seven, <Eight, <Nine
-ID_BLANK = . - DigitPtr
-    .byte   <Blank
-ID_LETTER_L = . - DigitPtr
-    .byte   <Letter_L
-ID_LETTER_V = . - DigitPtr
-    .byte   <Letter_V
-ID_DOT = . - DigitPtr
-    .byte   <DotChar
-ID_BONUS = . - DigitPtr
-    .byte   <BonusGfx
-ID_PELLET = . - DigitPtr
-    .byte   <PelletChar
 
 HMoveTbl
 ; this is calculated with 1 cycle extra on access
@@ -2723,7 +2801,9 @@ HMoveTbl
     ERR
   ENDIF
 
-    .byte   "JTZ"
+    .byte   " Pac-Lines x 8 - Demo V"
+    VERSION_STR
+    .byte   " - (C) 2024 Thomas Jentzsch "
 
     ALIGN_FREE_LBL 256, "PfColTbl"
 
@@ -2743,9 +2823,41 @@ BcdTbl
     .byte $00, $06, $12, $18, $24, $30, $36
 ;    .byte $42, $48, $54, $60, $66
 
-     ALIGN_FREE_LBL 256, "SpriteGfx"
+    .byte   "JTZ"
 
-SpriteGfx
+LeftDigitPtr
+    .byte   <Zero, <One, <Two, <Three, <Four
+    .byte   <Five, <Six, <Seven, <Eight, <Nine
+ID_BLANK = . - LeftDigitPtr
+    .byte   <Blank
+ID_PELLET = . - LeftDigitPtr
+    .byte   <PelletChar
+ID_LETTER_L = . - LeftDigitPtr
+    .byte   <Letter_L
+ID_BONUS = . - LeftDigitPtr
+    .byte   <BonusGfx
+ID_LETTER_H = . - LeftDigitPtr
+    .byte   <Letter_H
+
+
+RightDigitPtr
+    .byte   <Zero, <One, <Two, <Three, <Four
+    .byte   <Five, <Six, <Seven, <Eight, <Nine
+ID_BLANK = . - RightDigitPtr
+    .byte   <Blank
+ID_PELLET = . - RightDigitPtr
+    .byte   <PelletChar
+ID_DOT = . - RightDigitPtr
+    .byte   <DotChar
+ID_LETTER_V = . - RightDigitPtr
+    .byte   <Letter_V
+ID_LETTER_I = . - RightDigitPtr
+    .byte   <Letter_I
+
+
+     ALIGN_FREE_LBL 256, "PlayerGfx"
+
+PlayerGfx
   IF THEME_0
 PlayerGfx0
     .byte   %00011100
@@ -2793,8 +2905,99 @@ PlayerGfx2
     .byte   %00111100
     .byte   %00111110
     .byte   %00011100
+
+PlayerDeadGfx0
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00011100
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %01111111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %01100011
+    .byte   %01100011
+    .byte   %01000001
+    .byte   %01000001
+PlayerDeadGfx1
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00010100
+    .byte   %00111110
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01100011
+    .byte   %01000001
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+PlayerDeadGfx2
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00110110
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %00011100
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+PlayerDeadGfx3
+    .byte   %00000000
+    .byte   %00110110
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00011100
+    .byte   %00011100
+    .byte   %00001000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+PlayerDeadGfx4
+    .byte   %00000000
+    .byte   %00010100
+    .byte   %00111110
+    .byte   %00011100
+    .byte   %00011100
+    .byte   %00011100
+    .byte   %00011100
+    .byte   %00001000
+    .byte   %00001000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+PlayerDeadGfx
+    .byte   %00100010
+    .byte   %00010100
+    .byte   %01000000
+    .byte   %00100001
+    .byte   %00000010
+    .byte   %01100000
+    .byte   %00000111
+    .byte   %01100000
+    .byte   %00000111
+    .byte   %00100000
+    .byte   %01000010
+    .byte   %00000001
+    .byte   %00010100
+    .byte   %00100010
   ENDIF
-  IF THEME_1
+  IF THEME_1 ;{
 PlayerGfx0
     .byte   %00011100
     .byte   %00111110
@@ -2856,8 +3059,8 @@ PlayerGfx3
     .byte   %00011110
     .byte   %00011110
     .byte   %00011100
-  ENDIF
-  IF THEME_2
+  ENDIF ;}
+  IF THEME_2 ;{
 PlayerGfx0
     .byte   %00011100
     .byte   %00111110
@@ -2919,8 +3122,8 @@ PlayerGfx3
     .byte   %00101110
     .byte   %00101100
     .byte   %00001100
-  ENDIF
-  IF THEME_3
+  ENDIF ;}
+  IF THEME_3 ;{
 PlayerGfx0
     .byte   %00011100
     .byte   %00111110
@@ -2982,8 +3185,12 @@ PlayerGfx3
     .byte   %00111110
     .byte   %00111100
     .byte   %00011100
-  ENDIF
+  ENDIF ;}
+    CHECKPAGE PlayerGfx
 
+    ALIGN_FREE_LBL 256, "EnemyGfx"
+
+EnemyGfx
 EnemyGfx0
     .byte   %01010101
     .byte   %00101010
@@ -3180,7 +3387,7 @@ PearGfx
     .byte   %00011000
     .byte   %00001000
     .byte   %00001100
-    CHECKPAGE SpriteGfx
+    CHECKPAGE EnemyGfx
 
     ALIGN_FREE_LBL  256, "ColorTbls"
 
