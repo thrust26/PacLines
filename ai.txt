@@ -1,0 +1,29 @@
+AI rules
+- calc x-position, with wrap around
+  - ...?
+- power?
+  - yes
+    - if distance > timer
+      - collect center pellets
+    - else goto no
+- no
+  - eyes?
+    - no
+      - do not wrap round
+    - yes
+      - turn if enemy comes close
+      - turn if enemy is too far away
+      - if power pill is close continue and collect
+
+
+
+  for each distance = abs(xE - xP)
+  - distance to catch
+  - if distance to catch < distance
+      fine
+    else
+      reverse if moving into wrong direction
+
+	    U
+ ....P......P........E
+     |- dP -|-  dE  -| 

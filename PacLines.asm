@@ -9,10 +9,22 @@
 
 ; TODOs:
 ; - sound
+;   - only human players
+;   - 2 channels
+;     ? individual
+;       - 1st player
+;       - 2nd player
+;       - nth player if there is room
+;     ? global, following priorities
+;   - sound priorities
+;     - 1. Death
+;     - 2. Fruits
+;     - 3. Hunting mode
+;     - 4. Waka Waka
 ; o demo mode
 ;   + when no player got activated during start
-;   - automatic start
-;   - stop with button press
+;   ? automatic start
+;   x stop with button press
 ; - AI
 ;   - player (not playing, controlled by AI)
 ; ? larger power-up pellet
@@ -31,7 +43,7 @@
 ;   - save (PlusROM, SaveKey)
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
-; - better player animation
+; o better player animation
 ;   + alive, based on pos
 ;   - dead, based on id, where to store??? (xBonusLst?)
 ; - alternative theme
@@ -136,7 +148,7 @@ PLUSROM         = 0 ; (-~50)
 RAND16          = 0 ; (-3) 16-bit random values
 FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
 TOP_SCORE       = 1 ; (-41) display top score (else player who last changed level)
-LARGE_POWER     = 1 ; (+/-0) rectangular power up
+LARGE_POWER     = 0 ; (+/-0) rectangular power up
 
 THEME_0         = 1
 THEME_1         = 0
@@ -279,6 +291,11 @@ playerDone      .byte               ; 0 = alive, 1 = dead/score rolled
 enemyEyes       .byte               ; 0 = alive, 1 = eyes
 ;---------------------------------------
 powerTimLst     ds NUM_PLAYERS              ;  8 bytes
+;---------------------------------------
+audLen          .byte
+audIdxLst       ds  2
+audIdx0         = audIdxLst
+audIdx1         = audIdxLst+1
 ;---------------------------------------
 scoreLst        ds  NUM_PLAYERS*2           ; 16 bytes
 scoreLoLst      = scoreLst
@@ -1097,10 +1114,6 @@ Start SUBROUTINE
     txs
     pha
     bne     .clearLoop
-
-    lda     INTIM           ; randomize
-    ora     #$01
-    sta     randomLo
 ;---------------------------------------------------------------
 ; Detect QuadTari in left and right port
 ; Check if INPT0/2 get low after ~3 frames
@@ -1121,6 +1134,9 @@ Start SUBROUTINE
 ; - INPT2 = 1 && INPT3 = 1 -> Paddles
 ; - INPT2 = 0 && INPT3 = 1 -> QuadTari
 ; - INPT2 = 0 && INPT3 = 0 -> SaveKey
+    lda     INTIM           ; randomize
+    ora     #$01
+    sta     randomLo
     lda     INPT0           ; 3
     asl                     ; 2
     lda     INPT2           ; 3
@@ -1284,6 +1300,7 @@ OverScan SUBROUTINE
 .skipCXSprite
     asl     cxPelletBits
     bcs     .eatPellet
+.skipCXPelletJmp
     jmp     .skipCXPellet
 
 .eatPellet
@@ -1303,7 +1320,7 @@ OverScan SUBROUTINE
     and     PfMask,y
     cmp     pfLst,x
     sta     pfLst,x
-    beq     .skipCXPellet
+    beq     .skipCXPelletJmp
     sty     .xPos
     ldx     .loopCnt
 ; check if power-up got eaten:
@@ -1327,6 +1344,24 @@ OverScan SUBROUTINE
 .noPower
     lda     #PELLET_PTS     ; levelLst,x ?
     jsr     AddScoreLo
+    lda     playerAI        ; only human players make sound
+    and     Pot2Bit,x
+    bne     .skipWaka
+;    lda     #SOUND_EAT_END
+;    sta     audLen
+    lda     audLen
+    cmp     #SOUND_EAT_MID
+    bcs     .skipWaka
+    adc     #SOUND_EAT_MID
+    sta     audLen
+
+
+;    lda     audIdx0
+;    cmp     #SOUND_EAT_MID
+;    bcs     .skipWaka
+;    adc     #SOUND_EAT-1
+;    sta     audIdx0
+.skipWaka
 ; check if all pellets cleared:
     lda     pf01LeftLst,x
     ora     pf20MiddleLst,x
@@ -1400,6 +1435,39 @@ OverScan SUBROUTINE
 
 .exitLoop
 .skipGameRunning
+
+
+;************* SOUNDS ****************
+
+;    ldy     audIdx0
+;    lda     AudFTbl,y
+;    beq     .stopSound0
+;    sta     AUDF0
+;    lda     #$c
+;    sta     AUDC0
+;    lda     AudVTbl,y
+;    dey
+;    sty     audIdx0
+;.stopSound0
+;    sta     AUDV0
+
+    lda     audLen
+    beq     .disableAud0
+    dec     audLen
+    ldy     audIdx0
+    dey
+    bpl     .skipReset
+    ldy     #SOUND_EAT_END-1
+.skipReset
+    sty     audIdx0
+    lda     #$c
+    sta     AUDC0
+    lda     AudFTbl,y
+    sta     AUDF0
+    lda     AudVTbl,y
+.disableAud0
+    sta     AUDV0
+
 
 .waitTim
     lda     INTIM
@@ -2145,6 +2213,7 @@ PrepareDisplay SUBROUTINE
     lda     StartMidIds-1,y
     sta     .scoreMid
     lda     StartHiIds-1,y
+    eor     #(ID_POWER^ID_PELLET)<<4
 ; display countdown (.....C)
 ;    lda     countDown
 ;    sta     .scoreLo
@@ -2465,120 +2534,119 @@ NextRandom SUBROUTINE
 ;    rts
 ;; SetXPos
 
+;---------------------------------------------------------------
+PlaySounds SUBROUTINE
+;---------------------------------------------------------------
+    ldx     #2-1
+.loopChannels
+    ldy     audIdxLst,x
+    lda     AudTbl,y
+    beq     .stopSound
+    dec     audIdxLst,x
+    sta     AUDF0,x
+    lsr
+    lsr
+    lsr
+    lsr
+    and     #$0e            ; ignore top frequency bit
+    NOP_W
+.stopSound
+    sta     audIdxLst,x     ; A = 0
+    sta     AUDV0,x         ; $0, $2, $4..$e
+    dex
+    bpl     .loopChannels
+    rts
+
+;---------------------------------------------------------------
+StartSound SUBROUTINE
+;---------------------------------------------------------------
+; - 2 channels, used globally, following priorities
+;   - sound priorities
+;     - 1. Death
+;     - 2. Bonus
+;     - 3. Hunting mode
+;     - 4. Eat pellet
+; - restart existing sound (TODO: except Waka Waka)
+
+; X = player index, Y = sound id
+
+; 1. check for human players:
+    lda     playerAI        ; only human players make sound
+    and     Pot2Bit,x
+    bne     .skipSound
+
+; 2. sound already playing, if yes, restart in same channel
+; TODO: only extend for Waka Waka
+    ldx     #2-1
+.loopRestart
+    lda     audIdxLst,x
+    cmp     AudEnd,y
+    bcc     .nextChannel
+    cmp     AudStart,y
+    bcs     .nextChannel
+; same sound in channel, restart:
+    lda     AudStart,y
+    sta     audIdxLst,x
+.nextChannel
+    dex
+    bpl     .loopRestart
+
+; 3. determine priorities:
+    ldx     #0
+    lda     audIdx0
+    cmp     audIdx1
+    bcc     .check0
+    inx
+.check0
+    lda     AudStart,y      ; is priority of new sound higher than
+    cmp     audIdxLst,x     ;  the one of lower priority existing sound?
+    bcc     .skipSound      ; nope, skip new sound
+; 4. replace lower priority sound:
+    sta     audIdxLst,x
+    lda     AudCTbl,y
+    sta     AUDC0,x
+.skipSound
+    rts
+
+MAX_VOL     = $e << 4       ; 64%, bit 0 must NOT be set!
+DEF_VOL     = $8 << 4       ; 42%, avoid too much channel interference
+EAT_VOL     = DEF_VOL
+MUTE_VOL    = 0
+
+AudTbl  ; VVVFFFFF
+    .byte   0
+EAT_END     = . - AudTbl
+    ds      4, MUTE_VOL|1
+    .byte   EAT_VOL|$18, EAT_VOL|$11, EAT_VOL|$0e, EAT_VOL|$0b, EAT_VOL|$0a
+    ds      4, MUTE_VOL|1
+    .byte   EAT_VOL|$0a, EAT_VOL|$0b, EAT_VOL|$0e, EAT_VOL|$11, EAT_VOL|$18
+EAT_START   = . - AudTbl
+
+AudCTbl ; ....CCCC
+    .byte   $c0 ; EAT
+
+; sound plays from start to end + 1
+AudEnd
+    .byte   0
+    .byte   EAT_END
+AudStart
+SOUND_EAT   = . - AudStart
+    .byte   EAT_START
+SOUND_HUNT  = . - AudStart
+    .byte   12
+SOUND_BONUS = . - AudStart
+    .byte   24
+SOUND_DEATH = . - AudStart
+    .byte   40
+SOUND_COUNT = . - AudStart
+    .byte   50
+SOUND_START = . - AudStart
+    .byte   60
+
 
 ;===============================================================================
 ; R O M - T A B L E S (Bank 0)
 ;===============================================================================
-
-    ALIGN_FREE_LBL 256, "Rom-Tables"
-
-LINE_LUM    = $a
-LineCols
-  IF NTSC_COL
-    .byte   BROWN|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
-    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
-  ELSE
-    .byte   WHITE|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
-    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
-  ENDIF
-    CHECKPAGE LineCols
-
-Pot2Mask
-    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
-
-PfOffset
-    ds      2, pf01LeftLst   - pfLst
-    ds      4, pf01LeftLst   - pfLst
-    ds      4, pf20MiddleLst - pfLst
-    ds      2, pf20MiddleLst - pfLst
-    ds      4, pf12RightLst  - pfLst
-    ds      4, pf12RightLst  - pfLst
-
-PfMask
-    .byte   %11011111, %01111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
-    .byte   %11101111, %10111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
-
-Pot2Bit
-    .byte   $01, $02, $04, $08, $10, $20, $40, $80
-    CHECKPAGE Pot2Bit
-
-LVL_0   = 1    ; all must not divide by 4!
-LVL_1   = 7
-LVL_2   = 14
-LVL_3   = 22
-
-VarLevels
-    .byte   LVL_0, LVL_1, LVL_2, LVL_3
-PlayerSpeeds
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
-EnemySpeeds
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
-
-; Bonus Scores:
-; Pellet          10      1
-; Power-Up        50      5
-; Enemy          100     10
-; Cherry         100     10
-; Strawberry     300     30
-; Orange         500     50        (aka Peach, Yellow Apple)
-; Apple          700     70
-; Melon         1000    100
-; Grapes        2000    200
-; Banana        3000    300
-; Pear          5000    500
-BonusScore
-    .byte   $00
-    .byte   $10, $30, $50, $70, $00, $00, $00
-BonusScoreHi
-    .byte   $05
-    .byte   $00, $00, $00, $00, $01, $02, $03
-
-ButtonBit
-    .byte   %00000100
-    .byte   %00001000
-    .byte   %01000000
-    .byte   %10000000
-    .byte   %00000100
-    .byte   %00001000
-    .byte   %01000000
-    .byte   %10000000
-  CHECKPAGE ButtonBit
-
-
-StartLoIds
-    .byte   ID_BLANK<<4|ID_BLANK
-    .byte   ID_BLANK<<4|ID_BLANK
-;    .byte   ID_BLANK<<4|ID_BLANK
-;    .byte   ID_BLANK<<4|ID_BLANK
-;    .byte   ID_PELLET<<4|ID_BLANK
-;    .byte   ID_PELLET<<4|ID_PELLET
-StartMidIds
-    .byte   ID_BLANK<<4|ID_BLANK
-    .byte   ID_BLANK<<4|ID_BLANK
-;    .byte   ID_PELLET<<4|ID_BLANK
-;    .byte   ID_PELLET<<4|ID_PELLET
-;    .byte   ID_PELLET<<4|ID_PELLET
-;    .byte   ID_PELLET<<4|ID_PELLET
-StartHiIds
-    .byte   ID_PELLET<<4|ID_BLANK
-    .byte   ID_PELLET<<4|ID_PELLET
-    .byte   ID_PELLET<<4|ID_PELLET
-    .byte   ID_PELLET<<4|ID_PELLET
-    .byte   ID_PELLET<<4|ID_PELLET
-    .byte   ID_PELLET<<4|ID_PELLET
-COUNT_START = . - StartHiIds
-
-    .byte   "QUADTARI"
 
     ALIGN_FREE_LBL 256, "DigitGfx"
 
@@ -2706,6 +2774,17 @@ Letter_L
     .byte   %11000011
     .byte   %11000011
     .byte   %11000011
+;    .byte   %11000000
+;    .byte   %11000000
+Letter_I
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %00000000
     .byte   %11000000
     .byte   %11000000
 Letter_V
@@ -2730,17 +2809,6 @@ Letter_H
     .byte   %01100110
     .byte   %01100110
     .byte   %01100110
-Letter_I
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %00000000
-    .byte   %11000000
-    .byte   %11000000
 BonusGfx
     .byte   %00000100
     .byte   %01001010
@@ -2752,15 +2820,35 @@ BonusGfx
     .byte   %00110110
     .byte   %00011010
     .byte   %00000110
+PowerChar
+    .byte   %00000000
+    .byte   %00000000
+  IF LARGE_POWER
+    .byte   %00011000
+    .byte   %00111100
+    .byte   %00111100
+    .byte   %00111100
+    .byte   %00111100
+    .byte   %00011000
+  ELSE
+    .byte   %00011000
+    .byte   %00011000
+    .byte   %00111100
+    .byte   %00111100
+    .byte   %00011000
+    .byte   %00011000
+  ENDIF
+;    .byte   %00000000
+;    .byte   %00000000
 PelletChar
     .byte   %00000000
     .byte   %00000000
-    .byte   %00011000
+    .byte   %00000000
+    .byte   %00000000
     .byte   %00111100
     .byte   %00111100
-    .byte   %00111100
-    .byte   %00111100
-    .byte   %00011000
+    .byte   %00000000
+    .byte   %00000000
     .byte   %00000000
     .byte   %00000000
 DotChar
@@ -2786,9 +2874,6 @@ EnaBlTbl                ; can be overlapped with PearGfx
 
     CHECKPAGE_DATA_LBL DigitGfx, "DigitGfx"
 
-
-
-
 HMoveTbl
 ; this is calculated with 1 cycle extra on access
 ; it MUST NOT be at the END of a page
@@ -2804,56 +2889,6 @@ HMoveTbl
     .byte   " Pac-Lines x 8 - Demo V"
     VERSION_STR
     .byte   " - (C) 2024 Thomas Jentzsch "
-
-    ALIGN_FREE_LBL 256, "PfColTbl"
-
-PfColTbl = . - (GFX_H-POWER_H)/2 - 4
-PowerStart
-;    .byte   0       ; = $08
-;    .byte   0       ; = $02
-;    .byte   0       ; = $08 bottom pellet line
-;    .byte   0       ; = $0c top pellet line
-    .byte   $04
-    .byte   $0e
-POWER_H = . - PowerStart + 4
-;    ds      (GFX_H-POWER_H)/2, 0        ; ball disabled anyway
-    CHECKPAGE (. + (GFX_H-POWER_H/2))    ; but still must not cross a page!
-
-BcdTbl
-    .byte $00, $06, $12, $18, $24, $30, $36
-;    .byte $42, $48, $54, $60, $66
-
-    .byte   "JTZ"
-
-LeftDigitPtr
-    .byte   <Zero, <One, <Two, <Three, <Four
-    .byte   <Five, <Six, <Seven, <Eight, <Nine
-ID_BLANK = . - LeftDigitPtr
-    .byte   <Blank
-ID_PELLET = . - LeftDigitPtr
-    .byte   <PelletChar
-ID_LETTER_L = . - LeftDigitPtr
-    .byte   <Letter_L
-ID_BONUS = . - LeftDigitPtr
-    .byte   <BonusGfx
-ID_LETTER_H = . - LeftDigitPtr
-    .byte   <Letter_H
-
-
-RightDigitPtr
-    .byte   <Zero, <One, <Two, <Three, <Four
-    .byte   <Five, <Six, <Seven, <Eight, <Nine
-ID_BLANK = . - RightDigitPtr
-    .byte   <Blank
-ID_PELLET = . - RightDigitPtr
-    .byte   <PelletChar
-ID_DOT = . - RightDigitPtr
-    .byte   <DotChar
-ID_LETTER_V = . - RightDigitPtr
-    .byte   <Letter_V
-ID_LETTER_I = . - RightDigitPtr
-    .byte   <Letter_I
-
 
      ALIGN_FREE_LBL 256, "PlayerGfx"
 
@@ -3627,6 +3662,192 @@ GreyCol
 AIColMask ; MUST be behind enemy colors!
     ds      GFX_H, $f0|AI_LUM       ; is it OK to cross a page?
     CHECKPAGE ColorTbls
+
+LVL_0   = 1    ; all must not divide by 4!
+LVL_1   = 7
+LVL_2   = 14
+LVL_3   = 22
+
+VarLevels
+    .byte   LVL_0, LVL_1, LVL_2, LVL_3
+PlayerSpeeds
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
+EnemySpeeds
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
+
+
+LINE_LUM    = $a
+LineCols
+  IF NTSC_COL
+    .byte   BROWN|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
+    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
+  ELSE
+    .byte   WHITE|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
+    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
+  ENDIF
+    CHECKPAGE LineCols
+
+Pot2Mask
+    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
+
+PfOffset
+    ds      2, pf01LeftLst   - pfLst
+    ds      4, pf01LeftLst   - pfLst
+    ds      4, pf20MiddleLst - pfLst
+    ds      2, pf20MiddleLst - pfLst
+    ds      4, pf12RightLst  - pfLst
+    ds      4, pf12RightLst  - pfLst
+
+PfMask
+    .byte   %11011111, %01111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+    .byte   %11101111, %10111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+
+Pot2Bit
+    .byte   $01, $02, $04, $08, $10, $20, $40, $80
+    CHECKPAGE Pot2Bit
+
+; Bonus Scores:
+; Pellet          10      1
+; Power-Up        50      5
+; Enemy          100     10
+; Cherry         100     10
+; Strawberry     300     30
+; Orange         500     50        (aka Peach, Yellow Apple)
+; Apple          700     70
+; Melon         1000    100
+; Grapes        2000    200
+; Banana        3000    300
+; Pear          5000    500
+BonusScore
+    .byte   $00
+    .byte   $10, $30, $50, $70, $00, $00, $00
+BonusScoreHi
+    .byte   $05
+    .byte   $00, $00, $00, $00, $01, $02, $03
+
+ButtonBit
+    .byte   %00000100
+    .byte   %00001000
+    .byte   %01000000
+    .byte   %10000000
+    .byte   %00000100
+    .byte   %00001000
+    .byte   %01000000
+    .byte   %10000000
+  CHECKPAGE ButtonBit
+
+
+StartLoIds
+    .byte   ID_BLANK<<4|ID_BLANK
+    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_PELLET
+StartMidIds
+    .byte   ID_BLANK<<4|ID_BLANK
+    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_PELLET
+;    .byte   ID_PELLET<<4|ID_PELLET
+;    .byte   ID_PELLET<<4|ID_PELLET
+StartHiIds
+    .byte   ID_PELLET<<4|ID_BLANK
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+COUNT_START = . - StartHiIds
+
+    .byte   "QUADTARI"
+
+
+LeftDigitPtr
+    .byte   <Zero, <One, <Two, <Three, <Four
+    .byte   <Five, <Six, <Seven, <Eight, <Nine
+ID_BLANK = . - LeftDigitPtr
+    .byte   <Blank
+ID_PELLET = . - LeftDigitPtr
+    .byte   <PelletChar
+ID_POWER = . - LeftDigitPtr
+    .byte   <PowerChar
+ID_LETTER_L = . - LeftDigitPtr
+    .byte   <Letter_L
+ID_BONUS = . - LeftDigitPtr
+    .byte   <BonusGfx
+ID_LETTER_H = . - LeftDigitPtr
+    .byte   <Letter_H
+
+RightDigitPtr
+    .byte   <Zero, <One, <Two, <Three, <Four
+    .byte   <Five, <Six, <Seven, <Eight, <Nine
+ID_BLANK = . - RightDigitPtr
+    .byte   <Blank
+ID_PELLET = . - RightDigitPtr
+    .byte   <PelletChar
+ID_DOT = . - RightDigitPtr
+    .byte   <DotChar
+ID_LETTER_V = . - RightDigitPtr
+    .byte   <Letter_V
+ID_LETTER_I = . - RightDigitPtr
+    .byte   <Letter_I
+
+;    ALIGN_FREE_LBL 256, "PfColTbl"
+
+PfColTbl = . - (GFX_H-POWER_H)/2 - 4
+PowerStart
+;    .byte   0       ; = $08
+;    .byte   0       ; = $02
+;    .byte   0       ; = $08 bottom pellet line
+;    .byte   0       ; = $0c top pellet line
+    .byte   $04
+    .byte   $0e
+POWER_H = . - PowerStart + 4
+;    ds      (GFX_H-POWER_H)/2, 0        ; ball disabled anyway
+    CHECKPAGE (. + (GFX_H-POWER_H/2))    ; but still must not cross a page!
+
+BcdTbl
+    .byte $00, $06, $12, $18, $24, $30, $36
+;    .byte $42, $48, $54, $60, $66
+
+    .byte   "JTZ"
+
+AudFTbl
+    .byte   0
+    ds      3, 1
+    .byte   $18, $11, $0e, $0b, $0a
+SOUND_EAT_MID = . - AudFTbl    ; = 9
+    ds      4, $0a
+    .byte   $0a, $0b, $0e, $11, $18
+SOUND_EAT_END = . - AudFTbl        ; = 18
+    ds      4, $0a
+    .byte   $18, $11, $0e, $0b, $0a
+;    ds      4, 1
+;    .byte   $0a, $0b, $0e, $11, $18
+AudVTbl
+    ds      4, 0
+    .byte   $f, $f, $f, $f, $f
+    ds      4, 0
+    .byte   $f, $f, $f, $f, $f
+    ds      4, 0
+    .byte   $f, $f, $f, $f, $f
+;    ds      4, 0
+;    .byte   $f, $f, $f, $f, $f
+
+; Waka Waka:
+; 1. each eaten pill triggers/extends sound
+; 2. sound is either restarted or looping
 
     ORG_FREE_LBL BASE_ADR | $ffc, "Vectors"
 Vectors
