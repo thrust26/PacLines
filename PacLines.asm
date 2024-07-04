@@ -47,7 +47,9 @@
 ;   + alive, based on pos
 ;   - dead, based on id, where to store??? (xBonusLst?)
 ; - alternative theme
-;   ? robots
+;   ? robots (cute, bad)
+;     - collecting tools: screw, screwdriver, screw nut, wrench,
+;             batteries, pliers, multi meter, drilling machine
 ;   ? animals
 ;   ? spaceships
 ;   ? cars (police?)
@@ -122,14 +124,16 @@
 ;   + %10, start; TODO: level display
 ;   + %11, running
 ;   + %01, over (all human players killed)
-
+; + controls
+;   x press/release to switch directions
+;   + hold = left, release = right
 
 
 ;===============================================================================
 ; A S S E M B L E R - S W I T C H E S
 ;===============================================================================
 
-VERSION         = $0002
+VERSION         = $0030
 BASE_ADR        = $f000     ; 4K
 
   IFNCONST TV_MODE ; manually defined here
@@ -149,6 +153,7 @@ RAND16          = 0 ; (-3) 16-bit random values
 FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
 TOP_SCORE       = 1 ; (-41) display top score (else player who last changed level)
 LARGE_POWER     = 0 ; (+/-0) rectangular power up
+BUTTON_DIR      = 1 ; (+6, +1 RAM) button press directly determines direction
 
 THEME_0         = 1
 THEME_1         = 0
@@ -283,7 +288,9 @@ waitedOver      = playerSpeedSum    ; ......WW  reused during GAME_OVER
 playerIdx       = enemySpeed        ; ....PPPP  reused during GAME_OVER (score displayed when game is over)
 ;---------------------------------------
 ; row bits:
+  IF !BUTTON_DIR
 buttonBits      .byte               ; 1 = pressed
+  ENDIF
 playerLeft      .byte               ; 1 = left, 0 = right
 enemyLeft       .byte               ; 1 = left, 0 = right
 bonusLeft       .byte               ; 1 = left, 0 = right
@@ -1640,7 +1647,7 @@ ContInitCart
     cpx     #2
     lda     gameState
     bcs     .checkQTLeft
-    and     #QT_RIGHT       ; TODO BUG: sometimes not set
+    and     #QT_RIGHT
     bne     .checkButton    ; left/right bits are set opposite!
     beq     .notPressed
 
@@ -1827,7 +1834,7 @@ ContInitCart
     clc
     lda     xEnemyLst,x
     adc     .tmpSpeed
-    cmp     #SCW-9
+    cmp     #SCW-9+1
     bcc     .setXEnemy
     lda     #SCW-8
     bcs     .reviveEnemy
@@ -1895,6 +1902,7 @@ ContInitCart
     lda     playerAI
     and     Pot2Bit,x
     bne     .aiPlayer
+  IF !BUTTON_DIR
     lda     SWCHA
     and     ButtonBit,x
     bne     .skipPressed
@@ -1915,6 +1923,17 @@ ContInitCart
 .setBits
     sta     buttonBits
 .skipReverseDir
+  ELSE
+    lda     SWCHA
+    and     ButtonBit,x
+    cmp     #1
+    lda     playerLeft
+    and     Pot2Mask,x
+    bcs     .skipPressed
+    ora     Pot2Bit,x
+.skipPressed
+    sta     playerLeft
+  ENDIF
     jmp     .skipReverseDirAI
 
 .aiPlayer
