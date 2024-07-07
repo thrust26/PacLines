@@ -480,59 +480,21 @@ FREE_TOTAL SET FREE_TOTAL + FREE_GAP$
     SEG     Bank0
     ORG     BASE_ADR
 
-; player animation sequence:
-PlayerPtr
-  IF THEME_ORG
-    .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx0, <PlayerGfx0
-    .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx2, <PlayerGfx2
-    .byte   <PlayerGfx1 ; one extra for left moving
-  ENDIF
-  IF THEME_ALT_1
-    .byte   <PlayerGfx3, <PlayerGfx3, <PlayerGfx2, <PlayerGfx2
-    .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx0, <PlayerGfx0
-    .byte   <PlayerGfx3
-  ENDIF
-  IF THEME_ALT_2 | THEME_ALT_3
-    .byte   <PlayerGfx3, <PlayerGfx3, <PlayerGfx2, <PlayerGfx2
-    .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx0, <PlayerGfx0
-    .byte   <PlayerGfx3
-  ENDIF
+PfOffset
+    ds      2, pf01LeftLst   - pfLst
+    ds      4, pf01LeftLst   - pfLst
+    ds      4, pf20MiddleLst - pfLst
+    ds      2, pf20MiddleLst - pfLst
+    ds      4, pf12RightLst  - pfLst
+    ds      4, pf12RightLst  - pfLst
 
-    CHECKPAGE PlayerPtr
-PlayerCol ; align LineCols!
-  IF NTSC_COL
-    .byte   BROWN|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
-    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
-;    .byte   GREEN_YELLOW|$f, CYAN|$f, VIOLET|$f, BROWN|$f
-;    .byte   GREEN|$f, BLUE|$f, RED|$f, YELLOW|$f
-  ELSE
-    .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
-    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
-  ENDIF
-    .byte   WHITE   ; score display
-    CHECKPAGE PlayerCol
-
-;EnemyPtr
-;    .byte   <EnemyGfx0, <EnemyGfx0, <EnemyGfx1, <EnemyGfx1
-;    CHECKPAGE EnemyPtr ;
-EnemyColPtr
-    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
-    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
-    CHECKPAGE EnemyColPtr
-
-BonusPtr
-; (Cherry, Strawberry, Orange, Apple, Melon, Grapes, Banana, Pear)
-    .byte   <PearGfx
-;    .byte   <GrapesGfx
-    .byte   <CherryGfx, <StrawberryGfx, <OrangeGfx, <AppleGfx
-    .byte   <MelonGfx, <GrapesGfx, <BananaGfx
-    CHECKPAGE BonusPtr
-BonusColPtr
-    .byte   <PearCol
-;    .byte   <GrapesCol
-    .byte   <CherryCol, <StrawberryCol, <OrangeCol, <AppleCol
-    .byte   <MelonCol, <GrapesCol, <BananaCol
-    CHECKPAGE BonusColPtr
+PfMask
+    .byte   %11011111, %01111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+    .byte   %11101111, %10111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
 
 ScoreLums
 ; highlighted:
@@ -2933,28 +2895,39 @@ HMoveTbl
     include     "gfx_alt.h"
   ENDIF
 
-HumanColMask        ; Player sprite shading
-    .byte   $f6
-    .byte   $f8
-    .byte   $f8
-    .byte   $fa
-    .byte   $fa
-    .byte   $fa     ; immediate load in kernel!
-    .byte   0       ; pellet area
-    .byte   0       ; pellet area
-    .byte   $fa
-    .byte   $fa
-    .byte   $fa
-    .byte   $fc
-    .byte   $fc
-    .byte   $fe
+;    ALIGN_FREE_LBL 256, "PlayerCol"
 
-GreyCol
-    ds      GFX_H, AI_LUM + 2
+PlayerCol ; align LineCols!
+  IF NTSC_COL
+    .byte   BROWN|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
+;    .byte   GREEN_YELLOW|$f, CYAN|$f, VIOLET|$f, BROWN|$f
+;    .byte   GREEN|$f, BLUE|$f, RED|$f, YELLOW|$f
+  ELSE
+    .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
+  ENDIF
+    .byte   WHITE   ; score display
+    CHECKPAGE PlayerCol
 
-AIColMask ; MUST be behind enemy colors!
-    ds      GFX_H, $f0|AI_LUM       ; is it OK to cross a page?
-    CHECKPAGE ColorTbls
+;EnemyPtr
+;    .byte   <EnemyGfx0, <EnemyGfx0, <EnemyGfx1, <EnemyGfx1
+;    CHECKPAGE EnemyPtr ;
+EnemyColPtr
+    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
+    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
+    CHECKPAGE EnemyColPtr
+
+LINE_LUM    = $a
+LineCols
+  IF NTSC_COL
+    .byte   BROWN|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
+    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
+  ELSE
+    .byte   WHITE|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
+    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
+  ENDIF
+    CHECKPAGE LineCols
 
 LVL_0   = 1    ; all must not divide by 4!
 LVL_1   = 7
@@ -2974,36 +2947,8 @@ EnemySpeeds
     .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
     .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
 
-
-LINE_LUM    = $a
-LineCols
-  IF NTSC_COL
-    .byte   BROWN|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
-    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
-  ELSE
-    .byte   WHITE|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
-    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
-  ENDIF
-    CHECKPAGE LineCols
-
 Pot2Mask
     .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
-
-PfOffset
-    ds      2, pf01LeftLst   - pfLst
-    ds      4, pf01LeftLst   - pfLst
-    ds      4, pf20MiddleLst - pfLst
-    ds      2, pf20MiddleLst - pfLst
-    ds      4, pf12RightLst  - pfLst
-    ds      4, pf12RightLst  - pfLst
-
-PfMask
-    .byte   %11011111, %01111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
-    .byte   %11101111, %10111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
 
 Pot2Bit
     .byte   $01, $02, $04, $08, $10, $20, $40, $80
@@ -3096,7 +3041,7 @@ ID_LETTER_V = . - RightDigitPtr
 ID_LETTER_I = . - RightDigitPtr
     .byte   <Letter_I
 
-;    ALIGN_FREE_LBL 256, "PfColTbl"
+    ALIGN_FREE_LBL 256, "PfColTbl"
 
 PfColTbl = . - (GFX_H-POWER_H)/2 - 4
 PowerStart

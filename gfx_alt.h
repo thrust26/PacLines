@@ -187,3 +187,16 @@ PlayerGfx3
     .byte   %00111110
     .byte   %00111100
     .byte   %00011100
+
+PlayerPtr
+  IF THEME_ALT_1
+    .byte   <PlayerGfx3, <PlayerGfx3, <PlayerGfx2, <PlayerGfx2
+    .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx0, <PlayerGfx0
+    .byte   <PlayerGfx3
+  ENDIF
+  IF THEME_ALT_2 | THEME_ALT_3
+    .byte   <PlayerGfx3, <PlayerGfx3, <PlayerGfx2, <PlayerGfx2
+    .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx0, <PlayerGfx0
+    .byte   <PlayerGfx3
+  ENDIF
+    CHECKPAGE PlayerPtr
