@@ -21,6 +21,8 @@
 ;     - 2. Fruits
 ;     - 3. Hunting mode
 ;     - 4. Waka Waka
+;   - countdown, start
+;   - new high score
 ; o demo mode
 ;   + when no player got activated during start
 ;   ? automatic start
@@ -43,6 +45,7 @@
 ;   - save (PlusROM, SaveKey)
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
+; ? deadly enemies (mushrooms)
 ; o better player animation
 ;   + alive, based on pos
 ;   - dead, based on id, where to store??? (xBonusLst?)
@@ -50,10 +53,12 @@
 ;   ? robots (cute, bad)
 ;     - collecting tools: screw, screwdriver, screw nut, wrench,
 ;             batteries, pliers, multi meter, drilling machine
+;   ? Jawbreaker jaws and smilies + Fruits
 ;   ? animals
 ;   ? spaceships
 ;   ? cars (police?)
 ;   ? abstract
+;   ? ZPH: Cats, Toys, Treats
 ;   ? ...
 
 ; DONEs:
