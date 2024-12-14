@@ -41,22 +41,22 @@ NTSC_TIM        = 1
 ; general color constants
 BLACK           = $00
 WHITE           = $0e
-  IF NTSC_COL               ;
-YELLOW          = $10       ;   0   CYAN        0
-BROWN           = $20       ;   7               4
-ORANGE          = $30       ;*  4   CYAN
-RED             = $40       ;*                  1
-MAUVE           = $50       ;*  1   ORANGE
-VIOLET          = $60       ;                   5
-PURPLE          = $70       ;   5   ORANGE
-BLUE            = $80       ;                   2
-BLUE_CYAN       = $90       ;   2   RED
-CYAN            = $a0       ;*                  6
-CYAN_GREEN      = $b0       ;   6   RED
-GREEN           = $c0       ;                   3
-GREEN_YELLOW    = $d0       ;   3   MAUVE
-GREEN_BEIGE     = $e0       ;                   7
-BEIGE           = $f0       ;       MAUVE
+  IF NTSC_COL               ; GREY
+YELLOW          = $10       ; GOLD                    0
+BROWN           = $20       ; ORANGE                  7
+ORANGE          = $30       ; RED-ORANGE              4
+RED             = $40       ; PINK
+MAUVE           = $50       ; PURPLE                  1
+VIOLET          = $60       ; PURPLE_BLUE
+PURPLE          = $70       ; BLUE                    5
+BLUE            = $80       ; BLUE
+BLUE_CYAN       = $90       ; LT. BLUE                2
+CYAN            = $a0       ; TORQUOISE
+CYAN_GREEN      = $b0       ; GREEN-BLUE              6
+GREEN           = $c0       ; GREEN
+GREEN_YELLOW    = $d0       ; YELLOW_GREEN            3
+GREEN_BEIGE     = $e0       ; ORANGE_GREEN ($1.5)
+BEIGE           = $f0       ; LT. ORANGE ($2.5)
   ELSE                      ;
 YELLOW          = $20       ;   0
 BROWN           = YELLOW    ;
