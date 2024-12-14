@@ -20,7 +20,7 @@ To start a new game press **Reset**. Or **Fire** while not in a running game.
 ### Start Countdown
 After pressing **Reset** (or the top player's button), a short countdown starts. During this countdown, each player must press the paddle button to activate her/his lines for the game. Activated lines are displayed colored and with their pellets enabled.
 
-Immediately after the countdown the game starts. Inactive Pac-Mans will be controlled by the game's AI (still a lot TODO).
+Immediately after the countdown the game starts. Inactive Pac-Men will be controlled by the game's AI (still a lot TODO).
 
 ### The Game
 Your Pac-Man will automatically move right. To move left, hold the fire button. The main goal is to clear all pellets of your line without getting caught by a ghost. Unlike your Pac-Man, the ghosts cannot wrap around. If you eat a bigger power pellet, you can start chasing the ghost for a limited time. And you can earn bonus points by eating a fruit. 
