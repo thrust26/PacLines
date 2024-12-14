@@ -1507,7 +1507,7 @@ DEBUG0
     bcs     .contEnemySound     ;  yes, continue current sound
     ldx     #SIREN_IDX
 .startEnemySound
-    lda     AudC1Tbl,x
+    lda     #$04                ; AudC1Tbl,x
     sta     AUDC1
     lda     AudV1Tbl,x
     sta     AUDV1
@@ -3163,14 +3163,12 @@ EYES_IDX    = 2
 AudStart1Tbl
     .byte   SIREN_START, SCARED_START, EYES_START;, EATEN_START
 AudV1Tbl
-    .byte   SIREN_VOL, SCARED_VOL, EYES_VOL;, EATEN_VOL  ; Siren, Scared, Eyes, Eaten
-AudC1Tbl
-    .byte   $04, $04, $04;, $0c
+    .byte   SIREN_VOL, SCARED_VOL, EYES_VOL;, EATEN_VOL
+;AudC1Tbl
+;    .byte   $04, $04, $04;, $0c
 AudF1Tbl
 SIREN_END = . - AudF1Tbl + 1
     .byte   $ff
-;    .byte   $1b, $1a, $19, $18, $17, $16, $15, $14, $13, $12, $11, $10, $0f
-;    .byte   $0e, $0f, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $1a
     .byte   $1b+4, $1a+4, $19+4, $18+4, $17+4, $16+4, $15+4, $14+4, $13+4, $12+4, $11+4, $10+4, $0f+4
     .byte   $0e+4, $0f+4, $10+4, $11+4, $12+4, $13+4, $14+4, $15+4, $16+4, $17+4, $18+4, $19+4, $1a+4
 SIREN_START = . - AudF1Tbl - 1
@@ -3192,7 +3190,7 @@ EATEN_START = . - AudF1Tbl - 1
     ORG_FREE_LBL BASE_ADR | $ffc, "Vectors"
 Vectors
     .word   Start
-    .word   Start
+    .word   VERSION
 
 
 ;===============================================================================
