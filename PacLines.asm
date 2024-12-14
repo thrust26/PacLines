@@ -135,6 +135,22 @@
 ;   x press/release to switch directions
 ;   + hold = left, release = right
 
+;---------------------------------------------------------------
+; Code structure
+; OverScan
+; - determine maximum human player level
+; - handle player/pellet collisions
+; - handle player/enemy collisions
+; - update audio
+;---------------------------------------
+; VerticalBlank
+; - check console switches
+; - setup player, enemy & bonus speeds
+; - move players, enemies and bonuses
+; - update player directions
+; - prepare display
+; Note: This means that collisions are checked after display and before players
+;       get moved
 
 ;===============================================================================
 ; A S S E M B L E R - S W I T C H E S
@@ -1133,6 +1149,11 @@ ContDrawScreen
 ;---------------------------------------------------------------
 OverScan SUBROUTINE
 ;---------------------------------------------------------------
+; - determine maximum human player level
+; - handle player/pellet collisions
+; - handle player/enemy collisions
+; - update audio
+
 .loopCnt        = tmpVars
 .xPos           = tmpVars+1
 .maxLevel       = tmpVars+2
@@ -1151,6 +1172,7 @@ OverScan SUBROUTINE
 
 .startRunningMode
     bvc     .notRunning             ; GAME_OVER
+; *** determine maximum human player level ***
     ldy     #0
     ldx     #NUM_PLAYERS-1
 .loopMax
@@ -1173,116 +1195,33 @@ OverScan SUBROUTINE
     ldx     #NUM_PLAYERS-1
 .loopPlayers
     stx     .loopCnt
-    asl     cxSpriteBits
-    bcc     .skipCXSpriteJmp
-    lda     frameCnt
-    lsr
-    bcc     .checkEnemy
-    lda     #X_BONUS_OFF
-    cmp     xBonusLst,x
-    beq     .checkEnemy
-; must overlap at least 4 pixels:
-    lda     xPlayerLst,x
-    sec
-    sbc     xBonusLst,x
-    adc     #4
-    cmp     #4*2
-    bcs     .skipCXSpriteJmp
-    lda     #X_BONUS_OFF
-    sta     xBonusLst,x
-    lda     levelLst,x
-  REPEAT BONUS_SHIFT
-    lsr
-  REPEND
-    and     #NUM_BONUS-1
-    tax
-    lda     BonusScore,x
-    ldy     BonusScoreHi,x
-    ldx     .loopCnt
-    jsr     AddScore
-.skipCXSpriteJmp
-    jmp     .skipCXSprite
-
-.checkEnemy
-    lda     Pot2Bit,x       ; already dead?
-    bit     enemyEyes
-    bne     .skipCXSprite   ;  yes, skip
-; must overlap at least 4 pixels:
-    lda     xPlayerLst,x
-    sec
-    sbc     xEnemyLst,x
-    adc     #4
-    cmp     #4*2
-    bcs     .skipCXSprite
-
-    lda     Pot2Bit,x
-    ldy     powerTimLst,x   ; power-up enabled?
-    bne     .killEnemy      ;  yes, kill enemy
-; kill player:
-    and     playerAI
-    bne     .skipCXSprite
-    lda     Pot2Bit,x
-    ora     playerDone
-    sta     playerDone
-    ora     playerAI
-    eor     #$ff
-    bne     .skipCXSprite
-; game over, display scores:
-    sta     lastButtons
-    sta     frameCnt
-    sta     playerIdx
-    lda     #2
-    sta     waitedOver
-; check for new high score:
-    lda     gameState
-    and     #DEMO_MODE
-    bne     .skipHiScore
-    jsr     Get1stPlayerScore   ; get for largest score
-    ldy     scoreLoLst,x        ; player in X
-    lda     scoreHiLst,x
-    cmp     hiScoreHi
-    bcc     .skipHiScore
-    bne     .setHiScore
-    cpy     hiScoreLo
-    bcc     .skipHiScore
-.setHiScore
-    sty     hiScoreLo
-    sta     hiScoreHi
-    lda     levelLst,x
-    sta     hiScoreLvl
-.skipHiScore
-    lda     gameState
-    eor     #GAME_RUNNING^GAME_OVER
-    sta     gameState
-    jmp     .exitLoop
-
-.killEnemy
-    lda     Pot2Bit,x
-    ora     enemyEyes        ; -> eyes
-    sta     enemyEyes
-    lda     #ENEMY_PTS
-    jsr     AddScoreLo
-; set enemy escape direction:
-    lda     xEnemyLst,x
-    cmp     #SCW/2-4
-    lda     enemyLeft
-    bcc     .runLeft
-    ora     Pot2Bit,x
-    bcs     .setEnemyDir
-.runLeft
-    and     Pot2Mask,x
-.setEnemyDir
-    sta     enemyLeft
-    lda     #0              ; disable power-up
-    sta     powerTimLst,x
-.skipCXSprite
+;---------------------------------------
+; *** handle player/pellet collisions ***
     asl     cxPelletBits
     bcs     .eatPellet
+;  bcc     .eatPellet
 .skipCXPelletJmp
     jmp     .skipCXPellet
 
 .eatPellet
 ; eat pellet:
+  IF 0
+; software collisions might allow 1 frame earlier power pill eating but not as
+; long as players are moved AFTER collision check
+; currently software collisions are 1 frame delayed just as hardware collisions
+    lda     playerLeft
+    and     Pot2Bit,x
+    cmp     #1
+    lda     xPlayerLst,x
+    and     #$07
+    bcs     .leftDir
+    cmp     #1
+    NOP_W
+.leftDir
+    cmp     #3
+    bne     .skipCXPelletJmp
+  ENDIF
+
     lda     xPlayerLst,x
     lsr
     lsr
@@ -1405,6 +1344,113 @@ OverScan SUBROUTINE
 .skipBonus
     sty     xBonusLst,x
 .skipCXPellet
+;---------------------------------------
+; *** handle player/enemy collisions ***
+    asl     cxSpriteBits
+    bcc     .skipCXSpriteJmp
+    lda     frameCnt
+    lsr
+    bcc     .checkEnemy
+    lda     #X_BONUS_OFF
+    cmp     xBonusLst,x
+    beq     .checkEnemy
+; must overlap at least 4 pixels:
+    lda     xPlayerLst,x
+    sec
+    sbc     xBonusLst,x
+    adc     #4
+    cmp     #4*2
+    bcs     .skipCXSpriteJmp
+    lda     #X_BONUS_OFF
+    sta     xBonusLst,x
+    lda     levelLst,x
+  REPEAT BONUS_SHIFT
+    lsr
+  REPEND
+    and     #NUM_BONUS-1
+    tax
+    lda     BonusScore,x
+    ldy     BonusScoreHi,x
+    ldx     .loopCnt
+    jsr     AddScore
+.skipCXSpriteJmp
+    jmp     .skipCXSprite
+
+.checkEnemy
+    lda     Pot2Bit,x       ; already dead?
+    bit     enemyEyes
+    bne     .skipCXSprite   ;  yes, skip
+; must overlap at least 4 pixels:
+    lda     xPlayerLst,x
+    sec
+    sbc     xEnemyLst,x
+    adc     #4
+    cmp     #4*2
+    bcs     .skipCXSprite
+
+    lda     Pot2Bit,x
+    ldy     powerTimLst,x   ; power-up enabled?
+    bne     .killEnemy      ;  yes, kill enemy
+; kill player:
+    and     playerAI
+    bne     .skipCXSprite
+    lda     Pot2Bit,x
+    ora     playerDone
+    sta     playerDone
+    ora     playerAI
+    eor     #$ff
+    bne     .skipCXSprite
+; game over, display scores:
+    sta     lastButtons
+    sta     frameCnt
+    sta     playerIdx
+    lda     #2
+    sta     waitedOver
+; check for new high score:
+    lda     gameState
+    and     #DEMO_MODE
+    bne     .skipHiScore
+    jsr     Get1stPlayerScore   ; get for largest score
+    ldy     scoreLoLst,x        ; player in X
+    lda     scoreHiLst,x
+    cmp     hiScoreHi
+    bcc     .skipHiScore
+    bne     .setHiScore
+    cpy     hiScoreLo
+    bcc     .skipHiScore
+.setHiScore
+    sty     hiScoreLo
+    sta     hiScoreHi
+    lda     levelLst,x
+    sta     hiScoreLvl
+.skipHiScore
+    lda     gameState
+    eor     #GAME_RUNNING^GAME_OVER
+    sta     gameState
+    jmp     .exitLoop
+
+.killEnemy
+    lda     Pot2Bit,x
+    ora     enemyEyes        ; -> eyes
+    sta     enemyEyes
+    lda     #ENEMY_PTS
+    jsr     AddScoreLo
+; set enemy escape direction:
+    lda     xEnemyLst,x
+    cmp     #SCW/2-4
+    lda     enemyLeft
+    bcc     .runLeft
+    ora     Pot2Bit,x
+    bcs     .setEnemyDir
+.runLeft
+    and     Pot2Mask,x
+.setEnemyDir
+    sta     enemyLeft
+    lda     #0              ; disable power-up
+    sta     powerTimLst,x
+.skipCXSprite
+;---------------------------------------
+; loop
 ;.nextPlayer
     ldx     .loopCnt
     dex
@@ -1458,6 +1504,12 @@ OverScan SUBROUTINE
 ;---------------------------------------------------------------
 VerticalBlank SUBROUTINE
 ;---------------------------------------------------------------
+; - check console switches
+; - setup player, enemy & bonus speeds
+; - move players, enemies and bonuses
+; - update player directions
+; - prepare display
+
     lda     #%1110          ; each '1' bits generate a VSYNC ON line (bits 1..3)
 .loopVSync
     sta     WSYNC           ; 1st '0' bit resets Vsync, 2nd '0' bit exits loop
@@ -1726,6 +1778,7 @@ ContInitCart
     bvs     .runningMode
     jmp     .startMode          ; GAME_START
 
+; *** setup player, enemy & bonus speeds ***
 .runningMode
     lda     #0
     sta     .playerSpeed
@@ -1763,6 +1816,7 @@ ContInitCart
 .skipIncBonus
 .skipBonusSpeed
 
+; *** move players, enemies and bonuses ***
     ldx     #NUM_PLAYERS-1
 .loopMove
     lda     playerDone
@@ -1890,6 +1944,7 @@ ContInitCart
 .skipTim
 
 ;---------------------------------------------------------------
+; *** update player directions ***
 ; check buttons:
     lda     playerAI
     and     Pot2Bit,x
