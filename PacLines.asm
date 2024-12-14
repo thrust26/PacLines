@@ -9,7 +9,7 @@
 
 ; TODOs:
 ; - sound
-;   - only human players
+;   o only human players
 ;   - 2 channels
 ;     ? individual
 ;       - 1st player
@@ -27,13 +27,18 @@
 ;   + when no player got activated during start
 ;   ? automatic start
 ;   x stop with button press
-; - AI
-;   - player (not playing, controlled by AI)
+; - AI computer players
+;   - reverse direction if ghost comes too close:
+;     dist to border opposite of enemy/player speed < dist of ghost/enemy speed
+;     (dP/sP < dE/sE => dP*sE < dE*sP)
+;   - simplyfied: reverse at 8 - dist enemy from its border
+;   - move to middle pellets after power pill
 ; ? larger power-up pellet
 ; o flicker
 ;   ? all 3 objects
 ;   + Enemy and Bonus?
 ;   ? Player and Enemies when Bonus arrives (player is never over a pellet)?
+;   - color value boost
 ; o high score
 ;   + score and level
 ;   + determine
@@ -45,10 +50,12 @@
 ;   - save (PlusROM, SaveKey)
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
-; ? deadly enemies (mushrooms)
+; ? deadly bonuses (mushrooms)
 ; o better player animation
 ;   + alive, based on pos
 ;   - dead, based on id, where to store??? (xBonusLst?)
+
+; Ideas:
 ; - alternative theme
 ;   ? robots (cute, bad)
 ;     - collecting tools: screw, screwdriver, screw nut, wrench,
@@ -60,6 +67,7 @@
 ;   ? abstract
 ;   ? ZPH: Cats, Toys, Treats
 ;   ? ...
+; - countdown with Pac-Man
 
 ; DONEs:
 ; + difficulty ramp up
@@ -84,12 +92,6 @@
 ;     + running: move to side away from player
 ;     + dead   : move to far away side
 ;     + follow further to the left
-;   - AI players
-;     - reverse direction if ghost comes too close:
-;       dist to border opposite of enemy/player speed < dist of ghost/enemy speed
-;       (dP/sP < dE/sE => dP*sE < dE*sP)
-;     - simplyfied: reverse at 8 - dist enemy from its border
-;     - move to middle pellets after power pill
 ; + display
 ;   + score
 ;     + color gradients
@@ -161,9 +163,9 @@ LARGE_POWER     = 0 ; (+/-0) rectangular power up
 BUTTON_DIR      = 1 ; (+6, +1 RAM) button press directly determines direction
 
 THEME_ORG       = 1
-THEME_ALT_1     = 0
-THEME_ALT_2     = 0
-THEME_ALT_3     = 0
+THEME_ALT_1     = 0 ; TODO
+THEME_ALT_2     = 0 ; TODO
+THEME_ALT_3     = 0 ; TODO
 
 
 ;===============================================================================
@@ -1427,6 +1429,10 @@ OverScan SUBROUTINE
 ;.stopSound0
 ;    sta     AUDV0
 
+
+; - audLen dictates how long waka-waka is played
+; - audIdx has the current sound index
+; - both are updated at once!
     lda     audLen
     beq     .disableAud0
     dec     audLen
@@ -1438,9 +1444,9 @@ OverScan SUBROUTINE
     sty     audIdx0
     lda     #$c
     sta     AUDC0
-    lda     AudFTbl,y
+    lda     AudFTbl,y           ; varies
     sta     AUDF0
-    lda     AudVTbl,y
+    lda     AudVTbl,y           ; 0 | max
 .disableAud0
     sta     AUDV0
 
@@ -1665,7 +1671,9 @@ ContInitCart
 
     lda     frameCnt
     bne     .skipRunningJmp2
-    lda     #60
+    lda     #SOUND_EAT_END
+    sta     audLen
+    lda     #60-15
     sta     frameCnt
     dec     countDown
     bne     .skipRunningJmp2
@@ -1680,7 +1688,7 @@ ContInitCart
     sta     .tmpXPowerLst,x
     dex
     bpl     .loopReset
-; intialize demo mode & speeds:
+; initialize demo mode & speeds:
     lda     playerAI
     cmp     #$ff
     lda     gameState           ; display colors in demo mode
@@ -2560,6 +2568,7 @@ PlaySounds SUBROUTINE
     bpl     .loopChannels
     rts
 
+  IF 0 ;{
 ;---------------------------------------------------------------
 StartSound SUBROUTINE
 ;---------------------------------------------------------------
@@ -2610,6 +2619,7 @@ StartSound SUBROUTINE
     sta     AUDC0,x
 .skipSound
     rts
+  ENDIF ;}
 
 MAX_VOL     = $e << 4       ; 64%, bit 0 must NOT be set!
 DEF_VOL     = $8 << 4       ; 42%, avoid too much channel interference
