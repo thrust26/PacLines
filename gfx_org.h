@@ -32,35 +32,35 @@ EnemyCol1
     .byte   MAUVE|$e+2*0
     .byte   MAUVE|$e+2*0
 EnemyCol2
-    .byte   ORANGE|$6-2
-    .byte   ORANGE|$6-2
-    .byte   ORANGE|$8-2
-    .byte   ORANGE|$4-2
-    .byte   ORANGE|$a-2
-    .byte   ORANGE|$a-2
+    .byte   ORANGE|$6-4
+    .byte   ORANGE|$6-4
+    .byte   ORANGE|$8-4
+    .byte   ORANGE|$4-4
+    .byte   ORANGE|$a-4
+    .byte   ORANGE|$a-4
     .byte   0
     .byte   0
-    .byte   ORANGE|$a-2
-    .byte   ORANGE|$a-2
-    .byte   ORANGE|$c-2
-    .byte   ORANGE|$c-2
-    .byte   ORANGE|$e-2
-    .byte   ORANGE|$e-2
+    .byte   ORANGE|$a-4
+    .byte   ORANGE|$a-4
+    .byte   ORANGE|$c-4
+    .byte   ORANGE|$c-4
+    .byte   ORANGE|$e-4
+    .byte   ORANGE|$e-4
 EnemyCol3
-    .byte   BROWN|$6
-    .byte   BROWN|$6
-    .byte   BROWN|$8
-    .byte   BROWN|$4
-    .byte   BROWN|$a
-    .byte   BROWN|$a
+    .byte   BROWN|$6+2
+    .byte   BROWN|$6+2
+    .byte   BROWN|$8+2
+    .byte   BROWN|$4+2
+    .byte   BROWN|$a+2
+    .byte   BROWN|$a+2
     .byte   0
     .byte   0
-    .byte   BROWN|$a
-    .byte   BROWN|$a
-    .byte   BROWN|$c
-    .byte   BROWN|$c
-    .byte   BROWN|$e
-    .byte   BROWN|$e
+    .byte   BROWN|$a+2
+    .byte   BROWN|$a+2
+    .byte   BROWN|$c+2
+    .byte   BROWN|$c+2
+    .byte   BROWN|$e+2*0
+    .byte   BROWN|$e+2*0
 EnemyColDark
     .byte   BLUE|$6-2
     .byte   BLUE|$6-2
