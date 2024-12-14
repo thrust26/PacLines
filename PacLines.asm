@@ -9,7 +9,6 @@
 
 ; Bugs:
 ; - #1 powerlst might be able to become $ff
-; - #2 sometimes sound after game over
 
 ; TODOs:
 ; - sound
@@ -21,7 +20,7 @@
 ;   ? start
 ;   ? game over sound
 ;   - new high score
-
+; - select after game over must not change variation
 ; o demo mode
 ;   + when no player got activated during start
 ;   ? automatic start
@@ -36,8 +35,8 @@
 ; o flicker
 ;   ? all 3 objects
 ;   + Enemy and Bonus?
-;   ? Player and Enemies when Bonus arrives (player is never over a pellet)?
-;   - color value boost
+;   ? Player and Enemies when Bonus arrives (player is never over a pellet)
+;   x ghost color value boost
 ; o high score
 ;   + score and level
 ;   + determine
@@ -53,6 +52,7 @@
 ; o better player animation
 ;   + alive, based on pos
 ;   - dead, based on id, where to store??? (xBonusLst?)
+; ? support old and new controls
 
 ; Ideas:
 ; - alternative theme
@@ -133,6 +133,8 @@
 ; + controls
 ;   x press/release to switch directions
 ;   + hold = left, release = right
+; + replace "lvl" with "ln."
+; + #2 sometimes sound after game over
 
 ;---------------------------------------------------------------
 ; Code structure
@@ -1111,13 +1113,13 @@ Start SUBROUTINE
 ; Detect QuadTari in left and right port
 ; Check if INPT0/2 get low after ~3 frames
     ldy     #$82
-    sty     VBLANK      ; enable bit 7, dump ports
+    sty     VBLANK          ; enable bit 7, dump ports
     sta     WSYNC
 ;---------------------------------------
 .loopWaitQ
     sta     WSYNC
 ;---------------------------------------
-    sta     VBLANK      ; disable bit 7, A = 0!
+    sta     VBLANK          ; disable bit 7, A = 0!
     dex
     bne     .loopWaitQ
     dey
@@ -1428,7 +1430,7 @@ OverScan SUBROUTINE
     sta     gameState
     lda     #0
     sta     AUDV1
-    jmp     .exitLoop
+    jmp     .skipGameRunning
 
 .killEnemy
     lda     Pot2Bit,x
@@ -1437,7 +1439,6 @@ OverScan SUBROUTINE
     lda     playerAI
     and     Pot2Bit,x
     bne     .skipEatenSound
-DEBUG1
     lda     #EATEN_START
     sta     audIdx1
     lda     #$0c
@@ -1478,7 +1479,7 @@ DEBUG0
     bcs     .contEnemySound     ;  yes, continue current sound
 ; enemy eyes?
     ldx     #EYES_IDX
-    lda     playerAI
+    lda     playerAI            ; ignore enemy lines
     eor     #$ff
     and     enemyEyes
     bne     .startEnemySound
@@ -1487,7 +1488,7 @@ DEBUG0
     bcs     .contEnemySound     ;  yes, continue current sound
     ldx     #NUM_PLAYERS-1
 .loopPowerTim
-    lda     playerAI
+    lda     playerAI            ; ignore enemy lines
     and     Pot2Bit,x
     bne     .nextPlayer
     lda     powerTimLst,x
@@ -1499,7 +1500,7 @@ DEBUG0
     dex
     bpl     .loopPowerTim
 ; siren sound?
-    lda     playerAI
+    lda     playerAI            ; ignore enemy lines
     cmp     #$ff
     beq     .stopSound
     cpy     #SIREN_END          ; siren sound playing?
@@ -1519,7 +1520,7 @@ DEBUG0
     lda     .maxLevel           ; increase pitch every 2nd level
     lsr
     eor     #$ff
-    cmp     #-12-1
+    cmp     #-12-1              ; decrease AUDC1 by up to 12
     bcs     .addLevel
     lda     #-12
 .addLevel
@@ -1542,9 +1543,9 @@ DEBUG0
     dec     audLen
     ldy     audIdx0
     dey
-    bpl     .skipReset
+    bpl     .skipReset0
     ldy     #SOUND_EAT_END-1
-.skipReset
+.skipReset0
     sty     audIdx0
     lda     #$c
     sta     AUDC0
@@ -1553,26 +1554,6 @@ DEBUG0
     lda     AudV0Tbl,y           ; 0 | max
 .disableAud0
     sta     AUDV0
-
-
-
-
-
-;    ldy     audIdx0
-;    lda     AudF0Tbl,y
-;    beq     .stopSound0
-;    sta     AUDF0
-;    lda     #$c
-;    sta     AUDC0
-;    lda     AudV0Tbl,y
-;    dey
-;    sty     audIdx0
-;.stopSound0
-;    sta     AUDV0
-
-
-
-
 
 .waitTim
     lda     INTIM
@@ -1720,7 +1701,7 @@ ContInitCart
 
     lda     #COUNT_START
     sta     countDown
-    lda     #60
+    lda     #30
     sta     frameCnt
 
 .tmpXPowerLst = scoreHiLst  ; reused during GAME_START
@@ -2802,17 +2783,50 @@ One
     .byte   %01111000
     .byte   %00111000
 
+;Letter_L
+;    .byte   %11111001
+;    .byte   %11111001
+;    .byte   %11000011
+;    .byte   %11000011
+;    .byte   %11000011
+;    .byte   %11000011
+;    .byte   %11000011
+;    .byte   %11000011
+;;    .byte   %11000000
+;;    .byte   %11000000
+;Letter_I
+;    .byte   %11000000
+;    .byte   %11000000
+;    .byte   %11000000
+;    .byte   %11000000
+;    .byte   %11000000
+;    .byte   %11000000
+;    .byte   %11000000
+;    .byte   %00000000
+;    .byte   %11000000
+;    .byte   %11000000
+;Letter_V
+;    .byte   %10001100
+;    .byte   %10001100
+;    .byte   %11001100
+;    .byte   %11001100
+;    .byte   %01101100
+;    .byte   %01101100
+;    .byte   %01101100
+;    .byte   %01101100
+;    .byte   %00001100
+;    .byte   %00001100
 Letter_L
-    .byte   %11111001
-    .byte   %11111001
+    .byte   %11111011
+    .byte   %11111011
     .byte   %11000011
     .byte   %11000011
     .byte   %11000011
     .byte   %11000011
     .byte   %11000011
-    .byte   %11000011
-;    .byte   %11000000
-;    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
+    .byte   %11000000
 Letter_I
     .byte   %11000000
     .byte   %11000000
@@ -2825,16 +2839,17 @@ Letter_I
     .byte   %11000000
     .byte   %11000000
 Letter_V
-    .byte   %10001100
-    .byte   %10001100
-    .byte   %11001100
-    .byte   %11001100
     .byte   %01101100
     .byte   %01101100
-    .byte   %01101100
-    .byte   %01101100
-    .byte   %00001100
-    .byte   %00001100
+    .byte   %01100000
+    .byte   %01100000
+    .byte   %01100000
+    .byte   %11100000
+    .byte   %11000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+
 Letter_H
     .byte   %01100110
     .byte   %01100110
