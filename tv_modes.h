@@ -59,8 +59,8 @@ GREEN_BEIGE     = $e0       ; ORANGE_GREEN ($1.5)
 BEIGE           = $f0       ; LT. ORANGE ($2.5)
   ELSE                      ;
 YELLOW          = $20       ;   0
-BROWN           = YELLOW    ;
-ORANGE          = $40       ;   4
+BROWN           = YELLOW+$20    ;
+ORANGE          = $40+$20   ;   4
 RED             = $60       ;
 MAUVE           = $80       ;   1
 VIOLET          = $a0       ;
