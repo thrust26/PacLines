@@ -13,13 +13,13 @@
 ; TODOs:
 ; - sound
 ;   + only human players
-;   - prios:
-;     - channel 0: death, fruit, waka-waka (alternating "wa" and "ka")
+;   o- prios:
+;     o channel 0: death, bonus, waka-waka (alternating "wa" and "ka")
 ;     + channel 1: enemy eaten, eyes, scared, siren (pitch based on game speed)
 ;   o countdown
 ;   ? start
 ;   ? game over sound
-;   - new high score
+;   - new high score (player sound)
 ; - select after game over must not change variation
 ; o demo mode
 ;   + when no player got activated during start
@@ -52,6 +52,7 @@
 ; o better player animation
 ;   + alive, based on pos
 ;   - dead, based on id, where to store??? (xBonusLst?)
+;   ? remove ghost at death
 ; ? support old and new controls
 
 ; Ideas:
@@ -324,7 +325,6 @@ enemyEyes       .byte               ; 0 = alive, 1 = eyes
 ;---------------------------------------
 powerTimLst     ds NUM_PLAYERS              ;  8 bytes
 ;---------------------------------------
-audLen          .byte
 audIdxLst       ds  2
 audIdx0         = audIdxLst
 audIdx1         = audIdxLst+1
@@ -1160,11 +1160,12 @@ OverScan SUBROUTINE
 .maxLevel       = tmpVars+2
 
   IF NTSC_TIM
-    lda     #36-2
+    lda     #36-2+3                 ; allows up to 2304 cycles
   ELSE
     lda     #63
   ENDIF
     sta     TIM64T
+TIM_OS                              ; ~ 2025 cycles
 
     bit     gameState
     bmi     .startRunningMode       ; GAME_RUNNING|GAME_OVER
@@ -1192,6 +1193,7 @@ OverScan SUBROUTINE
     dex
     bpl     .loopMax
     sty     .maxLevel
+; ~200 cycles
 
     ldx     #NUM_PLAYERS-1
 .loopPlayers
@@ -1202,6 +1204,7 @@ OverScan SUBROUTINE
     bcs     .eatPellet
 ;  bcc     .eatPellet
 .skipCXPelletJmp
+    ldx     .loopCnt
     jmp     .skipCXPellet
 
 .eatPellet
@@ -1238,7 +1241,7 @@ OverScan SUBROUTINE
     and     PfMask,y
     cmp     pfLst,x
     sta     pfLst,x
-    beq     .skipCXPelletJmp
+    beq     .skipCXPelletJmp            ; has no valid X!
     sty     .xPos
     ldx     .loopCnt
 ; check if power-up got eaten:
@@ -1265,20 +1268,28 @@ OverScan SUBROUTINE
     lda     playerAI        ; only human players make sound
     and     Pot2Bit,x
     bne     .skipWaka
-;    lda     #SOUND_EAT_END
-;    sta     audLen
-    lda     audLen
-    cmp     #SOUND_EAT_MID
+; Waka-Waka alternates between WAKA und KAWA sounds:
+DEBUG1
+    lda     audIdx0
+    cmp     #BONUS_END-1    ; other sound playing?
+    bcc     .updataWaka     ;  no, updata waka
+    tay
+    lda     AudF0Tbl,y      ; other sound at end?
+    bne     .skipWaka       ;  yes, skip waka, else start with 0
+.updataWaka
+    cmp     #WAKA_START     ; currently kawa played?
+    bcs     .playsKawa      ;  yes, switch from kawa
+    cmp     #WAKA_MID
     bcs     .skipWaka
-    adc     #SOUND_EAT_MID
-    sta     audLen
+    adc     #WAKA_LEN * 3   ; switch from waKA to KAwa
+    bne     .setWakaIdx
 
-
-;    lda     audIdx0
-;    cmp     #SOUND_EAT_MID
-;    bcs     .skipWaka
-;    adc     #SOUND_EAT-1
-;    sta     audIdx0
+.playsKawa
+    cmp     #KAWA_MID
+    bcs     .skipWaka
+    sbc     #WAKA_LEN - 1   ; switch from kaWA to WAka
+.setWakaIdx
+    sta     audIdx0
 .skipWaka
 ; check if all pellets cleared:
     lda     pf01LeftLst,x
@@ -1347,6 +1358,10 @@ OverScan SUBROUTINE
 .skipCXPellet
 ;---------------------------------------
 ; *** handle player/enemy collisions ***
+    lda     Pot2Bit,x
+    and     playerDone
+    bne     .skipCXSpriteJmp
+; player alive, check:
     asl     cxSpriteBits
     bcc     .skipCXSpriteJmp
     lda     frameCnt
@@ -1364,6 +1379,20 @@ OverScan SUBROUTINE
     bcs     .skipCXSpriteJmp
     lda     #X_BONUS_OFF
     sta     xBonusLst,x
+; play bonus eaten sound:
+DEBUG2
+    lda     playerAI
+    and     Pot2Bit,x
+    bne     .skipBonusSound
+    lda     audIdx0
+    cmp     #DEATH_END
+    bcs     .skipBonusSound
+    lda     #BONUS_START
+    sta     audIdx0
+    lda     #BONUS_VOL
+    sta     AUDV0
+.skipBonusSound
+; add bonus points:
     lda     levelLst,x
   REPEAT BONUS_SHIFT
     lsr
@@ -1380,7 +1409,7 @@ OverScan SUBROUTINE
 .checkEnemy
     lda     Pot2Bit,x       ; already dead?
     bit     enemyEyes
-    bne     .skipCXSpriteJmp   ;  yes, skip
+    bne     .skipCXSpriteJmp;  yes, skip
 ; must overlap at least 4 pixels:
     lda     xPlayerLst,x
     sec
@@ -1394,7 +1423,17 @@ OverScan SUBROUTINE
     bne     .killEnemy      ;  yes, kill enemy
 ; kill player:
     and     playerAI
-    bne     .skipCXSprite
+    bne     .skipCXSpriteJmp
+; player death sound:
+DEBUG3
+    lda     #DEATH_START
+    sta     audIdx0
+    lda     #DEATH_VOL
+    sta     AUDV0
+    lda     Pot2Bit,x
+    ora     enemyEyes
+    sta     enemyEyes
+; disable player and check for game over:
     lda     Pot2Bit,x
     ora     playerDone
     sta     playerDone
@@ -1469,17 +1508,18 @@ OverScan SUBROUTINE
     dex
     bmi     .exitLoop
     jmp     .loopPlayers
+; ~1931 cycles for loop
 
 .exitLoop
 ;************* SOUNDS ****************
-DEBUG0
+; *** Enemy sounds ***
 ; enemy eaten sound?
     ldy     audIdx1
     cpy     #EYES_END           ; eaten or eyes sound playing?
     bcs     .contEnemySound     ;  yes, continue current sound
 ; enemy eyes?
     ldx     #EYES_IDX
-    lda     playerAI            ; ignore enemy lines
+    lda     playerAI            ; ignore AI lines
     eor     #$ff
     and     enemyEyes
     bne     .startEnemySound
@@ -1500,9 +1540,9 @@ DEBUG0
     dex
     bpl     .loopPowerTim
 ; siren sound?
-    lda     playerAI            ; ignore enemy lines
-    cmp     #$ff
-    beq     .stopSound
+    lda     playerAI            ; ignore AI lines
+    cmp     #$ff                ; all AI players?
+    beq     .stopSound1         ;  yes, no sound
     cpy     #SIREN_END          ; siren sound playing?
     bcs     .contEnemySound     ;  yes, continue current sound
     ldx     #SIREN_IDX
@@ -1514,13 +1554,13 @@ DEBUG0
     ldy     AudStart1Tbl,x
 .contEnemySound
     ldx     AudF1Tbl,y
-    bmi     .stopSound
+    beq     .stopSound1
     cpy     #SIREN_START+1
     bcs     .noSiren
     lda     .maxLevel           ; increase pitch every 2nd level
     lsr
     eor     #$ff
-    cmp     #-12-1              ; decrease AUDC1 by up to 12
+    cmp     #-12-1              ; decrease AUDF1 by up to 10
     bcs     .addLevel
     lda     #-12
 .addLevel
@@ -1530,30 +1570,49 @@ DEBUG0
     stx     AUDF1
     dey
     NOP_W
-.stopSound
+.stopSound1
     ldy     #0
     sty     audIdx1
 .skipGameRunning
+; 2133 cyles for loop
 
-; - audLen dictates how long waka-waka is played
-; - audIdx has the current sound index
-; - both are updated at once!
-    lda     audLen
-    beq     .disableAud0
-    dec     audLen
+; *** Player sounds ***
+DEBUG0
     ldy     audIdx0
-    dey
-    bpl     .skipReset0
-    ldy     #SOUND_EAT_END-1
-.skipReset0
-    sty     audIdx0
+    cpy     #DEATH_END
+    bcc     .notDeath
+    tya
+    sbc     #DEATH_END
+    ldx     #12
+.loopDeath
+    dex
+    dex
+    sbc     #12
+    bcs     .loopDeath
+    tay
+    txa
+    adc     AudF0Tbl+DEATH_END-$100+12,y
+    tax
+    bcc     .contDeath
+
+.notDeath
+    ldx     AudF0Tbl,y           ; varies
+    beq     .stopSound0
+.contDeath
     lda     #$c
     sta     AUDC0
-    lda     AudF0Tbl,y           ; varies
-    sta     AUDF0
-    lda     AudV0Tbl,y           ; 0 | max
-.disableAud0
-    sta     AUDV0
+    dec     audIdx0
+    stx     AUDF0
+    inx
+    beq     .muteSound0
+    cpy     #BONUS_END
+    bcs     .endSound0
+    ldx     #WAKA_VOL
+.muteSound0
+.stopSound0
+    stx     AUDV0
+.endSound0
+TIM_OE
 
 .waitTim
     lda     INTIM
@@ -1568,21 +1627,22 @@ VerticalBlank SUBROUTINE
 ; - update player directions
 ; - prepare display
 
-    lda     #%1110          ; each '1' bits generate a VSYNC ON line (bits 1..3)
+    lda     #%1110              ; each '1' bits generate a VSYNC ON line (bits 1..3)
 .loopVSync
-    sta     WSYNC           ; 1st '0' bit resets Vsync, 2nd '0' bit exits loop
+    sta     WSYNC               ; 1st '0' bit resets Vsync, 2nd '0' bit exits loop
     sta     VSYNC
     lsr
-    bne     .loopVSync      ; branch until VSYNC has been reset
+    bne     .loopVSync          ; branch until VSYNC has been reset
 
     dec     frameCnt
 
   IF NTSC_TIM
-    lda     #44-1
+    lda     #44-1-3             ; allows up to 2460 cycles
   ELSE
     lda     #77
   ENDIF
     sta     TIM64T
+TIM_VS                          ; ~2265 cycles
 
 ; *** check console switches ***
     lda     SWCHB
@@ -1781,8 +1841,8 @@ ContInitCart
 
     lda     frameCnt
     bne     .skipRunningJmp2
-    lda     #SOUND_EAT_END
-    sta     audLen
+    lda     #WAKA_START
+    sta     audIdx0
     lda     #60-15
     sta     frameCnt
     dec     countDown
@@ -2060,7 +2120,6 @@ ContInitCart
 
 ;*******************************************************************************
 .aiPlayer
-DEBUG0
 .tmpY       = tmpVars+3
 .adjXPlayer = tmpVars+4
 
@@ -2205,7 +2264,7 @@ PrepareDisplay SUBROUTINE
 ;   - nth player's score and level (alternating)
 ;   - high score
 ; - GAME_SELECT
-;   - start level and fruits
+;   - start level and bonus
 ;   - TODO: high score (if saved)
 ; - GAME_START
 ;   - count down
@@ -2446,6 +2505,7 @@ PrepareDisplay SUBROUTINE
     sta     .scorePtr4+1        ; 3
     sta     .scorePtr5+1        ; 3 = 20
 ; /VerticalBlank
+TIM_VE
     jmp     DrawScreen
 
 ;---------------------------------------------------------------
@@ -3115,46 +3175,72 @@ BcdTbl
 
     .byte   "JTZ"
 
-; *** Player sounds ***
-WAKA_VOL    = $8
-
-SIREN_VOL   = $4
-SCARED_VOL  = $6
-EYES_VOL    = $6
-EATEN_VOL   = $a
-
-; Waka Waka:
-; 1. each eaten pill triggers/extends sound
-; 2. sound is either restarted or looping
-
-AudF0Tbl
-    .byte   0
-    ds      3, 1
-    .byte   $18, $11, $0e, $0b, $0a
-SOUND_EAT_MID = . - AudF0Tbl    ; = 9
-    ds      4, $0a
-    .byte   $0a, $0b, $0e, $11, $18
-SOUND_EAT_END = . - AudF0Tbl        ; = 18
-    ds      4, $0a
-    .byte   $18, $11, $0e, $0b, $0a
-;    ds      4, 1
-;    .byte   $0a, $0b, $0e, $11, $18
-AudV0Tbl
-    ds      4, 0
-    .byte   WAKA_VOL, WAKA_VOL, WAKA_VOL, WAKA_VOL, WAKA_VOL
-    ds      4, 0
-    .byte   WAKA_VOL, WAKA_VOL, WAKA_VOL, WAKA_VOL, WAKA_VOL
-    ds      4, 0
-    .byte   WAKA_VOL, WAKA_VOL, WAKA_VOL, WAKA_VOL, WAKA_VOL
-;    ds      4, 0
-;    .byte   $f, $f, $f, $f, $f
-
-; *** Enemy Sounds ***
 ; Dintari PacMan 8K:
 ; Siren : V=8; C=4; F=0e..1b, 1a..0f
 ; Scared: V=8; C/F = c/12, 4/1b, 12, 0d, 0a, 08, 07, 06
 ; Eyes  : V=8; C=4; F=06, 07, 08, 09, 0a, 0b, 0c, 0d, 0f, 11, 13, 15, 18, 1b, 1f
 
+; Fruit : V=e; C=C; F=09, 0a, 0b, 0d, 0f, 12, 15, 18, 1d, 1f, 1d, 1b, 19, 17, 15, 12, 0f, 0d, 0b, 0a, 09, 08
+; Death : V=e; C=4; F=06, 07, 08, 09, 0b, 0d, 10, 14, 1c
+;   C=C; F=0d, 1b, -, C=4; F=06, 07, 08, 09, 0b, 0d, 10, 14, 1c
+; C=4; F=
+
+; C=4; F=
+; 11, 10, 0f, 0e, 0d, 0e, 0f, 10, 11, 12, 13, 14
+; 13, 12, 11, 10, 0f, 10, 11, 12, 13, 14, 15, 16
+; 15, 14, 13, 12, 11, 12, 13, 14, 15, 16, 17, 18
+; 17, 16, 15, 14, 13, 14, 15, 16, 16, 18, 19, 1a
+; 19, 18, 17, 16, 15, 16, 17, 18, 19, 1a, 1b, 1c
+; 1b, 1a, 19, 18, 17, 18, 19, 1a, 1b, 1c, 1d, 1e
+; 1d
+; 1d + bang/bang
+
+WAKA_VOL    = $8    ; pellet eaten
+BONUS_VOL   = $c    ; bonus eaten
+DEATH_VOL   = $c    ; player killed
+
+SIREN_VOL   = $4    ; enemy hunting
+SCARED_VOL  = $6    ; enemy scares
+EYES_VOL    = $6    ; enemy eyes
+EATEN_VOL   = $a    ; enemy eaten
+
+; *** Player sounds ***
+AudF0Tbl
+;WAKA_END = . - AudF0Tbl
+    .byte   0
+    ds      3, $ff
+    .byte   $18, $11, $0e, $0b, $0a
+WAKA_LEN = . - AudF0Tbl
+WAKA_MID = . - AudF0Tbl                     ; = 9
+    ds      4, $ff
+    .byte   $0a, $0b, $0e, $11, $18
+WAKA_START = . - AudF0Tbl - 1               ; = 18
+;KAWA_END = . - AudF0Tbl
+    .byte   0
+    ds      3, $ff
+    .byte   $0a, $0b, $0e, $11, $18
+KAWA_MID = . - AudF0Tbl                     ; = 9
+    ds      4, $ff
+    .byte   $18, $11, $0e, $0b, $0a
+KAWA_START = . - AudF0Tbl - 1               ; = 18
+BONUS_END = . - AudF0Tbl + 1
+    .byte   0
+    .byte   $08, $09, $0a, $0b, $0d, $0f, $12, $15, $17, $19, $1b
+    .byte   $1d, $1f, $1d, $18, $15, $12, $0f, $0d, $0b, $0a, $09
+BONUS_START = . - AudF0Tbl - 1
+DEATH_END = . - AudF0Tbl + 1
+    .byte   0
+;final sounds missing here...
+;    .byte   $1e, $1d, $1c, $1b, $1a, $19, $18, $17, $18, $19, $1a, $1b
+;    .byte   $1c, $1b, $1a, $19, $18, $17, $16, $15, $16, $17, $18, $19
+;    .byte   $1a, $19, $18, $17, $16, $15, $14, $13, $14, $15, $16, $17
+;    .byte   $18, $17, $16, $15, $14, $13, $12, $11, $12, $13, $14, $15
+;    .byte   $16, $15, $14, $13, $12, $11, $10, $0f, $10, $11, $12, $13
+    .byte   $14, $13, $12, $11, $10, $0f, $0e, $0d, $0e, $0f, $10, $11
+DEATH_START = . + 5 * 12 - AudF0Tbl - 1
+; 339 bytes -> 370 bytes
+
+; *** Enemy Sounds ***
 SIREN_IDX   = 0
 SCARED_IDX  = 1
 EYES_IDX    = 2
@@ -3168,21 +3254,21 @@ AudV1Tbl
 ;    .byte   $04, $04, $04;, $0c
 AudF1Tbl
 SIREN_END = . - AudF1Tbl + 1
-    .byte   $ff
+    .byte   0
     .byte   $1b+4, $1a+4, $19+4, $18+4, $17+4, $16+4, $15+4, $14+4, $13+4, $12+4, $11+4, $10+4, $0f+4
     .byte   $0e+4, $0f+4, $10+4, $11+4, $12+4, $13+4, $14+4, $15+4, $16+4, $17+4, $18+4, $19+4, $1a+4
 SIREN_START = . - AudF1Tbl - 1
 SCARED_END = . - AudF1Tbl + 1
-    .byte   $ff
+    .byte   0
     .byte   $1f, $1b, $12, $0d, $0a, $08, $07, $06
 SCARED_START = . - AudF1Tbl - 1
 EYES_END = . - AudF1Tbl + 1
-    .byte   $ff
+    .byte   0
     .byte   $08, $07, $06
     .byte   $1f, $1b, $18, $15, $13, $11, $0f, $0d, $0c, $0b, $0a, $09
 EYES_START = . - AudF1Tbl - 1
 ;EATEN_END = . - AudF1Tbl + 1
-    .byte   $ff
+    .byte   0
     .byte   $05, $06, $07, $08
     .byte   $09, $0a, $0b, $0d, $0f, $12, $15, $1d, $1f
 EATEN_START = . - AudF1Tbl - 1
