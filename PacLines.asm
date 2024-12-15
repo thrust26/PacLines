@@ -11,6 +11,7 @@
 ; - #1 powerlst might be able to become $ff
 
 ; TODOs:
+; - timer overflows
 ; - sound
 ;   + only human players
 ;   o- prios:
@@ -19,7 +20,7 @@
 ;   o countdown
 ;   ? start
 ;   ? game over sound
-;   - new high score (player sound)
+;   - new high score (player sound, 10x ding)
 ; - select after game over must not change variation
 ; o demo mode
 ;   + when no player got activated during start
@@ -179,6 +180,7 @@ FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
 TOP_SCORE       = 1 ; (-41) display top score (else player who last changed level)
 LARGE_POWER     = 0 ; (+/-0) rectangular power up
 BUTTON_DIR      = 1 ; (+6, +1 RAM) button press directly determines direction
+KILL_AI         = 1 ; (-4) enemies can kill AI players
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -244,8 +246,8 @@ POWER_PTS       = 5
 ENEMY_PTS       = 10
 
 ; gameState constants:
-DIFF_MASK       = $03       ; game variation TODO
-BONUS_GAME      = $04       ; TODO
+DIFF_MASK       = $03       ; game variation
+BONUS_GAME      = $04       ; bonus game flag
 VAR_MASK        = DIFF_MASK|BONUS_GAME
 DEMO_MODE       = $08
 QT_RIGHT        = $10       ; bit 5==0: left QuadTari; bit 4==1: right QuadTari
@@ -1358,11 +1360,11 @@ DEBUG1
 .skipCXPellet
 ;---------------------------------------
 ; *** handle player/enemy collisions ***
+    asl     cxSpriteBits
     lda     Pot2Bit,x
     and     playerDone
     bne     .skipCXSpriteJmp
 ; player alive, check:
-    asl     cxSpriteBits
     bcc     .skipCXSpriteJmp
     lda     frameCnt
     lsr
@@ -1423,13 +1425,19 @@ DEBUG2
     bne     .killEnemy      ;  yes, kill enemy
 ; kill player:
     and     playerAI
+  IF !KILL_AI
     bne     .skipCXSpriteJmp
+  ELSE
+    bne     .skipKillSound
+  ENDIF
 ; player death sound:
 DEBUG3
     lda     #DEATH_START
     sta     audIdx0
     lda     #DEATH_VOL
     sta     AUDV0
+.skipKillSound
+; TODO: disable ghost instead of eyes:
     lda     Pot2Bit,x
     ora     enemyEyes
     sta     enemyEyes
@@ -1437,7 +1445,19 @@ DEBUG3
     lda     Pot2Bit,x
     ora     playerDone
     sta     playerDone
+  IF KILL_AI
+    tay
+    lda     gameState
+    and     #DEMO_MODE
+    bne     .wait4AllDone
+    tya
     ora     playerAI
+    NOP_B
+.wait4AllDone
+    tya
+  ELSE
+    ora     playerAI
+  ENDIF
     eor     #$ff
     bne     .skipCXSprite
 ; game over, display scores:
@@ -1630,6 +1650,7 @@ VerticalBlank SUBROUTINE
     lda     #%1110              ; each '1' bits generate a VSYNC ON line (bits 1..3)
 .loopVSync
     sta     WSYNC               ; 1st '0' bit resets Vsync, 2nd '0' bit exits loop
+;---------------------------------------
     sta     VSYNC
     lsr
     bne     .loopVSync          ; branch until VSYNC has been reset
@@ -1642,7 +1663,7 @@ VerticalBlank SUBROUTINE
     lda     #77
   ENDIF
     sta     TIM64T
-TIM_VS                          ; ~2265 cycles
+TIM_VS                          ; ~2555 cycles
 
 ; *** check console switches ***
     lda     SWCHB
@@ -1833,8 +1854,10 @@ ContInitCart
     bne     .skip2ndSetA
     lda     #$82
     sta     WSYNC
+;---------------------------------------
     sta     VBLANK
     sta     WSYNC           ; wait at least one scanline
+;---------------------------------------
 .skip2ndSetA
     dex
     bpl     .loopStart
@@ -1898,6 +1921,7 @@ ContInitCart
 
 ; *** setup player, enemy & bonus speeds ***
 .runningMode
+TIM_SS ; ~91 cycles (more to VSYNC?)
     lda     #0
     sta     .playerSpeed
     lda     playerSpeed
@@ -1906,7 +1930,7 @@ ContInitCart
     adc     playerSpeedSum
     sta     playerSpeedSum
     bcc     .skipIncPlayer
-    inc     .playerSpeed
+    inc     .playerSpeed        ; +4
 .skipIncPlayer
     lda     #0
     sta     .enemySpeed
@@ -1916,23 +1940,24 @@ ContInitCart
     adc     enemySpeedSum
     sta     enemySpeedSum
     bcc     .skipIncEnemy
-    inc     .enemySpeed
+    inc     .enemySpeed         ; +4
 .skipIncEnemy
 
-    lda     frameCnt
-    lsr
-    bcc     .skipBonusSpeed
-    lda     #0
-    sta     .bonusSpeed
-    lda     bonusSpeed
-    asl
-    rol     .bonusSpeed
-    adc     bonusSpeedSum
-    sta     bonusSpeedSum
-    bcc     .skipIncBonus
-    inc     .bonusSpeed
-.skipIncBonus
+    lda     frameCnt            ; 3
+    lsr                         ; 2
+    bcc     .skipBonusSpeed     ; 2/3=  7/8
+    lda     #0                  ; 2
+    sta     .bonusSpeed         ; 3
+    lda     bonusSpeed          ; 3
+    asl                         ; 2
+    rol     .bonusSpeed         ; 5
+    adc     bonusSpeedSum       ; 3
+    sta     bonusSpeedSum       ; 3
+    bcc     .skipIncBonus       ; 2/3
+    inc     .bonusSpeed         ; 5
+.skipIncBonus                   ;   = 24/28
 .skipBonusSpeed
+TIM_SE
 
 ; *** move players, enemies and bonuses ***
     ldx     #NUM_PLAYERS-1
@@ -2099,18 +2124,89 @@ ContInitCart
 .skipPressed
     sta     playerLeft
   ENDIF
-    jmp     .skipReverseDirAI
+    jmp     .skipAI
 
 .aiPlayer
 ; some randomness:
-    jsr     NextRandom
+;    jsr     NextRandom
+;    eor     frameCnt
+;    cmp     #$fe
+;    bcc     .skipReverseDirAI
+;    lda     playerLeft
+;    eor     Pot2Bit,x
+;    sta     playerLeft
+;.skipReverseDirAI
+
+; if powertim < x
+;   reverse at 8 - enemy dist (evade ghost)
+; else
+;   if ghost not eyes
+;     - chase (hunt ghost)
+;   else
+;     - no reverse (collect pellets)
+;    cpx     #7
+;    bne     .skipAI
+
+; TODO: one 4 or 2 AI players/frame
+    txa
+    eor     randomLo
     eor     frameCnt
-    cmp     #$fe
-    bcc     .skipReverseDirAI
+    and     #$03
+    bne     .skipAI
+
+; no AI during eyes:
+    lda     enemyEyes
+    and     Pot2Bit,x
+    bne     .aiDone
+; TODO: add some randomness
+; different AI during earlier power mode:
+    lda     powerTimLst,x
+    cmp     #POWER_TIM*1/4
+    bcs     .aiPower
+; AI player has no power:
+    lda     xPlayerLst,x        ; TODO: work with centers positions and consider wrap around at right
+    cmp     xEnemyLst,x
+    bcc     .enemyRight
+    lsr
+    lsr
+    adc     xPlayerLst,x
+    sbc     #160/4
+; (160 - xPlayer) * 1.5 > 160 - xEnemy
+; 240 + xEnemy          > 160 + xPlayer * 1,5
+; 80 + xEnemy           > xPlayer * 1,5
+; xEnemy                > xPlayer * 1,5 - 80
+    cmp     xEnemyLst,x
+;    bcs     .skipAI
+    bpl     .skipAI
     lda     playerLeft
-    eor     Pot2Bit,x
+    and     Pot2Mask,x
+    jmp     .playerLeft
+
+.enemyRight
+    adc     #7
+    lsr
+    lsr
+    adc     xPlayerLst,x
+    cmp     xEnemyLst,x
+    bcc     .skipAI
+    lda     playerLeft
+    ora     Pot2Bit,x
+    bcs     .playerLeft
+
+.aiPower
+;    lda     enemyEyes
+;    and     Pot2Bit,x
+;    bne     .aiDone
+    lda     xEnemyLst,x
+    cmp     xPlayerLst,x
+    lda     playerLeft
+    and     Pot2Mask,x
+    bcs     .playerLeft
+    ora     Pot2Bit,x
+.playerLeft
     sta     playerLeft
-.skipReverseDirAI
+.aiDone
+.skipAI
 
   IF 0 ;{
     lda     playerAI
@@ -2440,7 +2536,7 @@ PrepareDisplay SUBROUTINE
   ELSE
     ldx     scorePlayerIdx
   ENDIF
-    lda     #ID_LETTER_L<<4|ID_LETTER_V
+    lda     #ID_LETTER_L<<4|ID_Letter_N
     sta     .scoreMid
 .displayScore
     lda     PlayerCol,x
@@ -2497,7 +2593,7 @@ PrepareDisplay SUBROUTINE
     dex
     dex
     bpl     .loopScores
-    lda     #>DigitGfx          ; 2
+    lda     #>DigitGfx          ; 2         TODO: 10 bytes could be saved
     sta     .scorePtr0+1        ; 3
     sta     .scorePtr1+1        ; 3
     sta     .scorePtr2+1        ; 3
@@ -2634,10 +2730,12 @@ AddScore
     tya
     adc     scoreHiLst,x
     bcc     .setScore
+  IF !KILL_AI
     lda     gameState
     and     #DEMO_MODE
     eor     #DEMO_MODE
     beq     .demoMode
+  ENDIF
     lda     Pot2Bit,x       ; stop player
     ora     playerDone
     sta     playerDone
@@ -2681,16 +2779,16 @@ NextRandom SUBROUTINE
 ;---------------------------------------------------------------
     lda     randomLo        ; 3
     lsr                     ; 2
-  IF RAND16
+  IF RAND16 ;{
     rol     randomHi        ; 5
-  ENDIF
+  ENDIF ;}
     bcc     .skipEor        ; 2/3
     eor     #EOR_RND        ; 2
 .skipEor
     sta     randomLo        ; 3 = 16/17
-  IF RAND16
+  IF RAND16 ;{
     eor     randomHi        ; 3 = 19/20
-  ENDIF
+  ENDIF ;}
     rts
 ; /NextRandom
 
@@ -2843,39 +2941,6 @@ One
     .byte   %01111000
     .byte   %00111000
 
-;Letter_L
-;    .byte   %11111001
-;    .byte   %11111001
-;    .byte   %11000011
-;    .byte   %11000011
-;    .byte   %11000011
-;    .byte   %11000011
-;    .byte   %11000011
-;    .byte   %11000011
-;;    .byte   %11000000
-;;    .byte   %11000000
-;Letter_I
-;    .byte   %11000000
-;    .byte   %11000000
-;    .byte   %11000000
-;    .byte   %11000000
-;    .byte   %11000000
-;    .byte   %11000000
-;    .byte   %11000000
-;    .byte   %00000000
-;    .byte   %11000000
-;    .byte   %11000000
-;Letter_V
-;    .byte   %10001100
-;    .byte   %10001100
-;    .byte   %11001100
-;    .byte   %11001100
-;    .byte   %01101100
-;    .byte   %01101100
-;    .byte   %01101100
-;    .byte   %01101100
-;    .byte   %00001100
-;    .byte   %00001100
 Letter_L
     .byte   %11111011
     .byte   %11111011
@@ -2898,18 +2963,6 @@ Letter_I
     .byte   %00000000
     .byte   %11000000
     .byte   %11000000
-Letter_V
-    .byte   %01101100
-    .byte   %01101100
-    .byte   %01100000
-    .byte   %01100000
-    .byte   %01100000
-    .byte   %11100000
-    .byte   %11000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-
 Letter_H
     .byte   %01100110
     .byte   %01100110
@@ -2932,6 +2985,17 @@ BonusGfx
     .byte   %00110110
     .byte   %00011010
     .byte   %00000110
+Letter_N
+    .byte   %01101100
+    .byte   %01101100
+    .byte   %01100000
+    .byte   %01100000
+    .byte   %01100000
+    .byte   %11100000
+    .byte   %11000000
+    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %00000000
 PowerChar
     .byte   %00000000
     .byte   %00000000
@@ -3150,8 +3214,8 @@ ID_PELLET = . - RightDigitPtr
     .byte   <PelletChar
 ID_DOT = . - RightDigitPtr
     .byte   <DotChar
-ID_LETTER_V = . - RightDigitPtr
-    .byte   <Letter_V
+ID_Letter_N = . - RightDigitPtr
+    .byte   <Letter_N
 ID_LETTER_I = . - RightDigitPtr
     .byte   <Letter_I
 
