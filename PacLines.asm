@@ -1280,7 +1280,6 @@ TIM_OS                              ; ~ 2091 cycles
     and     Pot2Bit,x
     bne     .skipWaka
 ; Waka-Waka alternates between WAKA und KAWA sounds:
-DEBUG1
     lda     audIdx0
     cmp     #BONUS_END-1    ; other sound playing?
     bcc     .updataWaka     ;  no, updata waka
@@ -1606,7 +1605,6 @@ DEBUG3
 ; 2133 cyles for loop
 
 ; *** Player sounds ***
-DEBUG0
     ldy     audIdx0
     cpy     #DEATH_END
     bcc     .notDeath
@@ -2155,66 +2153,73 @@ TIM_SPE
 ;    cpx     #7
 ;    bne     .skipAI
 
-; TODO: one 4 or 2 AI players/frame
+.absXPlayer     = tmpVars+4
+.absXEnemy      = tmpVars+5
+
+; only ~2 random AI players/frame:
     txa
     eor     randomLo
     eor     frameCnt
     and     #$03
     bne     .skipAI
-
 ; no AI during eyes:
     lda     enemyEyes
     and     Pot2Bit,x
-    bne     .aiDone
-; TODO: add some randomness
+    bne     .skipAI
 ; different AI during earlier power mode:
-    lda     powerTimLst,x
-    cmp     #POWER_TIM*1/4
+    lda     xPlayerLst,x
+    ldy     powerTimLst,x
+    cpy     #POWER_TIM*1/5
     bcs     .aiPower
 ; AI player has no power:
-    lda     xPlayerLst,x        ; TODO: work with centers positions and consider wrap around at right
+DEBUG0
     cmp     xEnemyLst,x
     bcc     .enemyRight
+; enemy left:
+; TODO: avoid tmp vars
+    lda     #159
+    sbc     xEnemyLst,x
+    sta     .absXEnemy
+    lda     #159
+    sbc     xPlayerLst,x
+    sta     .absXPlayer
     lsr
-    lsr
-    adc     xPlayerLst,x
-    sbc     #160/4
-; (160 - xPlayer) * 1.5 > 160 - xEnemy
-; 240 + xEnemy          > 160 + xPlayer * 1,5
-; 80 + xEnemy           > xPlayer * 1,5
-; xEnemy                > xPlayer * 1,5 - 80
-    cmp     xEnemyLst,x
-;    bcs     .skipAI
-    bpl     .skipAI
-    lda     playerLeft
-    and     Pot2Mask,x
-    jmp     .playerLeft
-
-.enemyRight
-    adc     #7
-    lsr
-    lsr
-    adc     xPlayerLst,x
-    cmp     xEnemyLst,x
-    bcc     .skipAI
+    adc     .absXPlayer
+    sbc     .absXEnemy
+    bcs     .moveRight
+    cmp     #-4
+    bcs     .moveRight
+    cmp     #-140
+    bcs     .skipAI
+.moveLeft
     lda     playerLeft
     ora     Pot2Bit,x
-    bcs     .playerLeft
+    bne     .playerLeft
 
 .aiPower
-;    lda     enemyEyes
-;    and     Pot2Bit,x
-;    bne     .aiDone
-    lda     xEnemyLst,x
-    cmp     xPlayerLst,x
+; AI player has power:
+;    lda     xPlayerLst,x
+    cmp     xEnemyLst,x
+    bcs     .moveLeft
+    bcc     .moveRight
+
+.enemyRight
+    lsr
+    adc     xPlayerLst,x    ; xPlayer * 1.5 < xEnemy  ->  xPlayer * 1.5 - xEnemy < 0
+    sbc     xEnemyLst,x
+; same logic as in enemyLeft, but opposite directions:
+    bcs     .moveLeft
+    cmp     #-4
+    bcs     .moveLeft
+    cmp     #-140
+    bcs     .skipAI
+.moveRight
     lda     playerLeft
     and     Pot2Mask,x
-    bcs     .playerLeft
-    ora     Pot2Bit,x
 .playerLeft
     sta     playerLeft
-.aiDone
 .skipAI
+;
 
   IF 0 ;{
     lda     playerAI
