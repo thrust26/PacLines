@@ -7,7 +7,7 @@
     include vcs.h
   LIST ON
 
-; Legend
+; Legend:
 ; - open
 ; o partially solved
 ; + solved
@@ -30,15 +30,7 @@
 ;   - new high score (player sound, 10x ding)
 ; - select after game over must not change variation
 ; o demo mode
-;   + when no player got activated during start
 ;   ? automatic start
-;   x stop with button press
-; - AI computer players
-;   - reverse direction if ghost comes too close:
-;     dist to border opposite of enemy/player speed < dist of ghost/enemy speed
-;     (dP/sP < dE/sE => dP*sE < dE*sP)
-;   - simplyfied: reverse at 8 - dist enemy from its border
-;   - move to middle pellets after power pill
 ; ? larger power-up pellet
 ; o flicker
 ;   ? all 3 objects
@@ -54,6 +46,7 @@
 ;     + keep for same variation as high score (were to store?)
 ;   o display
 ;   - save (PlusROM, SaveKey)
+;   - do not display "Ln. 0"
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
 ; ? deadly bonuses (mushrooms)
@@ -145,6 +138,16 @@
 ; + replace "lvl" with "ln."
 ; + #2 sometimes sound after game over
 ; - #1 powerLst might be able to become $ff
+; + demo mode
+;   + when no player got activated during start
+;   x stop with button press
+; + AI computer players
+;   x reverse direction if ghost comes too close:
+;     dist to border opposite of enemy/player speed < dist of ghost/enemy speed
+;     (dP/sP < dE/sE => dP*sE < dE*sP)
+;   x simplyfied: reverse at 8 - dist enemy from its border
+;   + move to middle pellets after power pill
+
 
 ;---------------------------------------------------------------
 ; Code structure
@@ -2098,7 +2101,7 @@ TIM_SPE
     lda     playerAI
     and     Pot2Bit,x
     bne     .aiPlayer
-  IF !BUTTON_DIR
+  IF !BUTTON_DIR ;{
     lda     SWCHA
     and     ButtonBit,x
     bne     .skipPressed
@@ -2119,43 +2122,18 @@ TIM_SPE
 .setBits
     sta     buttonBits
 .skipReverseDir
-  ELSE
+    jmp     .skipAI
+  ELSE ;}
     lda     SWCHA
     and     ButtonBit,x
     cmp     #1
-    lda     playerLeft
-    and     Pot2Mask,x
-    bcs     .skipPressed
-    ora     Pot2Bit,x
-.skipPressed
-    sta     playerLeft
+    bcs     .moveRight
+    bcc     .moveLeft
   ENDIF
-    jmp     .skipAI
 
 .aiPlayer
-; some randomness:
-;    jsr     NextRandom
-;    eor     frameCnt
-;    cmp     #$fe
-;    bcc     .skipReverseDirAI
-;    lda     playerLeft
-;    eor     Pot2Bit,x
-;    sta     playerLeft
-;.skipReverseDirAI
-
-; if powertim < x
-;   reverse at 8 - enemy dist (evade ghost)
-; else
-;   if ghost not eyes
-;     - chase (hunt ghost)
-;   else
-;     - no reverse (collect pellets)
-;    cpx     #7
-;    bne     .skipAI
-
 .absXPlayer     = tmpVars+4
 .absXEnemy      = tmpVars+5
-
 ; only ~2 random AI players/frame:
     txa
     eor     randomLo
@@ -2170,9 +2148,14 @@ TIM_SPE
     lda     xPlayerLst,x
     ldy     powerTimLst,x
     cpy     #POWER_TIM*1/5
-    bcs     .aiPower
+    bcc     .noAIPower
+; AI player has power
+    cmp     xEnemyLst,x
+    bcs     .moveLeft
+    bcc     .moveRight
+
+.noAIPower
 ; AI player has no power:
-DEBUG0
     cmp     xEnemyLst,x
     bcc     .enemyRight
 ; enemy left:
@@ -2187,21 +2170,14 @@ DEBUG0
     adc     .absXPlayer
     sbc     .absXEnemy
     bcs     .moveRight
-    cmp     #-4
+    cmp     #-4             ; consider minimum overlap
     bcs     .moveRight
-    cmp     #-140
+    cmp     #-140           ; consider wrap around
     bcs     .skipAI
 .moveLeft
     lda     playerLeft
     ora     Pot2Bit,x
-    bne     .playerLeft
-
-.aiPower
-; AI player has power:
-;    lda     xPlayerLst,x
-    cmp     xEnemyLst,x
-    bcs     .moveLeft
-    bcc     .moveRight
+    bne     .setPlayerLeft
 
 .enemyRight
     lsr
@@ -2209,141 +2185,16 @@ DEBUG0
     sbc     xEnemyLst,x
 ; same logic as in enemyLeft, but opposite directions:
     bcs     .moveLeft
-    cmp     #-4
+    cmp     #-4             ; consider minimum overlap
     bcs     .moveLeft
-    cmp     #-140
+    cmp     #-140           ; consider wrap around
     bcs     .skipAI
 .moveRight
     lda     playerLeft
     and     Pot2Mask,x
-.playerLeft
+.setPlayerLeft
     sta     playerLeft
 .skipAI
-;
-
-  IF 0 ;{
-    lda     playerAI
-    and     Pot2Bit,x
-    bne     .aiPlayer
-    jmp     .nextMove
-
-;*******************************************************************************
-.aiPlayer
-.tmpY       = tmpVars+3
-.adjXPlayer = tmpVars+4
-
-    lda     xPlayerLst,x
-    clc
-    adc     #SPRITE_W/2         ; center sprite
-    cmp     #SCW
-    bcc     .posOK
-    sbc     #SCW
-.posOK
-    sta     .adjXPlayer
-    lsr
-    lsr
-    lsr
-    tay                         ; Y = distance player has to move/8 (0..19)
-
-    lda     xEnemyLst,x
-    clc
-    adc     #SPRITE_W/2         ; center sprite
-    cmp     #SCW
-    bcc     .posEnemyOK
-    sbc     #SCW
-.posEnemyOK
-;    sec
-;    sbc     #0                  ; distance to 0 (or any other point)
-;                 U
-;    ....P........P..........E
-;        |<- dP ->|<-- dE -->|
-    cmp     .adjXPlayer
-    php
-    bcs     .enemyRight
-    lda     #SCW-1-SPRITE_W/2
-    sec
-    sbc     xEnemyLst,x
-;    clc
-;    adc     #0                  ; distance to 0 (or any other point)
-    pha
-    sty     .tmpY
-    lda     #SCW/8-1
-    sec
-    sbc     .tmpY
-    tay
-    pla
-.enemyRight                     ; A = abs(distance) = 0..159
- ; if dist < n move away from enemy
- ; else if dist > m move to enemy
- ; else keep direction
-
-
-;    lda     xPlayerLst,x
-;    clc
-;    adc     #SPRITE_W/2         ; center sprite
-;    cmp     #SCW
-;    bcc     .posOK
-;    sbc     #SCW
-;.posOK
-;    lsr
-;    lsr
-;    lsr
-;    tay                         ; Y = x-pos player/8 (0..19)
-;    lda     xEnemyLst,x
-;    sec
-;    sbc     xPlayerLst,x
-;    php                         ; save relative position (CF == 1 == enemy at right)
-;    bcs     .enemyRight
-;    eor     #$ff                ;$ff..
-;    adc     #1
-;    pha
-;    sty     .tmpY
-;    lda     #SCW/8-1
-;    sec
-;    sbc     .tmpY
-;    tay
-;    pla
-;.enemyRight                     ; A = abs(distance) = 0..159
- ; if dist < n move away from enemy
- ; else if dist > m move to enemy
- ; else keep direction
-
-
- ; a = xEnemy
-    cmp     AiMoveAway,y        ; away..away, cont..cont, towards..towards enemy
-    bcs     .checkTowards
-; run away from enemy:
-    plp
-    bcc     .moveRight          ; enemy at left, move right
-    bcs     .moveLeft           ; enemy at right, move left
-
-AiMoveAway
-; min. distance between enemy and player, per player position/8, 1.4 speed factor
-;    .byte    10,14,17,20,23,26,30,33,36,39,42,46,49,52,55,58,62,65,68,71
-    .byte    22-4,34-4,45-4,56-4,67-4,78-4,90-4,101-4,112-4,123-4,134-4,146-4,157-4,168-4,179-4,190-4,202-4,213-4,224-4,235-4,
-
-
-.checkTowards
-    cmp     #SCW-SPRITE_W/2
-    bcc     .cont
-; run towards enemy:
-    plp
-    bcs     .moveRight          ; enemy at right, move right
-;    bcc     .moveLeft           ; enemy at left, move left
-.moveLeft
-    lda     playerLeft
-    ora     Pot2Bit,x
-    bne     .setDir
-
-.moveRight
-    lda     playerLeft
-    and     Pot2Mask,x
-.setDir
-    sta     playerLeft
-    NOP_B
-.cont
-    plp
-  ENDIF ;}
 
 .nextMove
 ; switch to 2nd QuadTari port set:
