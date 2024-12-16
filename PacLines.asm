@@ -7,11 +7,18 @@
     include vcs.h
   LIST ON
 
-; Bugs:
-; - #1 powerlst might be able to become $ff
+; Legend
+; - open
+; o partially solved
+; + solved
+; x cancelled
+; ? maybe
+
+; BUGs:
+; - #3 timer overflows
+;   + high score display
 
 ; TODOs:
-; - timer overflows
 ; - sound
 ;   + only human players
 ;   o- prios:
@@ -137,6 +144,7 @@
 ;   + hold = left, release = right
 ; + replace "lvl" with "ln."
 ; + #2 sometimes sound after game over
+; - #1 powerLst might be able to become $ff
 
 ;---------------------------------------------------------------
 ; Code structure
@@ -314,6 +322,8 @@ bonusSpeedSum   .byte
 lastButtons     = playerSpeed       ; BBBBBBBB  reused during GAME_SELECT & GAME_OVER
 waitedOver      = playerSpeedSum    ; ......WW  reused during GAME_OVER
 playerIdx       = enemySpeed        ; ....PPPP  reused during GAME_OVER (score displayed when game is over)
+ignoredScores   = enemySpeedSum     ; IIIIIIII  reused for displaying alternating scores
+nxtIgnoredScores= bonusSpeedSum
 ;---------------------------------------
 ; row bits:
   IF !BUTTON_DIR
@@ -1167,7 +1177,7 @@ OverScan SUBROUTINE
     lda     #63
   ENDIF
     sta     TIM64T
-TIM_OS                              ; ~ 2025 cycles
+TIM_OS                              ; ~ 2091 cycles
 
     bit     gameState
     bmi     .startRunningMode       ; GAME_RUNNING|GAME_OVER
@@ -1180,10 +1190,9 @@ TIM_OS                              ; ~ 2025 cycles
     ldy     #0
     ldx     #NUM_PLAYERS-1
 .loopMax
-    lda     gameState
-    and     #DEMO_MODE
-    bne     .demoMode
-    lda     playerAI                ; only human players increase speeds
+    lda     playerAI                ; only human players increase speeds (except for demo mode)
+    cmp     #$ff                    ; DEMO_MODE?
+    beq     .demoMode
     and     Pot2Bit,x
     bne     .nextMax
 .demoMode
@@ -1303,10 +1312,9 @@ DEBUG1
     lda     levelLst,x
     cmp     .maxLevel
     bcc     .skipIncSpeed
-    lda     gameState
-    and     #DEMO_MODE
-    bne     .demoModeInc
-    lda     playerAI        ; only human players increase speeds
+    lda     playerAI        ; only human players increase speeds (except for demo mode)
+    cmp     #$ff            ; DEMO_MODE?
+    beq     .demoModeInc
     and     Pot2Bit,x
     bne     .skipIncSpeed2
 .demoModeInc
@@ -1461,9 +1469,10 @@ DEBUG3
     eor     #$ff
     bne     .skipCXSprite
 ; game over, display scores:
-    sta     lastButtons
+    sta     lastButtons         ; A = 0
     sta     frameCnt
     sta     playerIdx
+    sta     ignoredScores
     lda     #2
     sta     waitedOver
 ; check for new high score:
@@ -1561,7 +1570,7 @@ DEBUG3
     bpl     .loopPowerTim
 ; siren sound?
     lda     playerAI            ; ignore AI lines
-    cmp     #$ff                ; all AI players?
+    cmp     #$ff                ; DEMO_MODE?
     beq     .stopSound1         ;  yes, no sound
     cpy     #SIREN_END          ; siren sound playing?
     bcs     .contEnemySound     ;  yes, continue current sound
@@ -1663,7 +1672,7 @@ VerticalBlank SUBROUTINE
     lda     #77
   ENDIF
     sta     TIM64T
-TIM_VS                          ; ~2555 cycles
+TIM_VS                          ; ~2833 cycles
 
 ; *** check console switches ***
     lda     SWCHB
@@ -1711,7 +1720,7 @@ TIM_VS                          ; ~2555 cycles
     sta     debounce
 .skipSwitches
     bit     gameState
-    bpl     .selectOverMode
+    bpl     .selectOverMode     ; GAME_OVER|GAME_SELECT
     jmp     .startRunningMode   ; GAME_START|GAME_RUNNING
 
 ;---------------------------------------------------------------
@@ -1866,7 +1875,7 @@ ContInitCart
     bne     .skipRunningJmp2
     lda     #WAKA_START
     sta     audIdx0
-    lda     #60-15
+    lda     #FPS*3/4
     sta     frameCnt
     dec     countDown
     bne     .skipRunningJmp2
@@ -1883,7 +1892,7 @@ ContInitCart
     bpl     .loopReset
 ; initialize demo mode & speeds:
     lda     playerAI
-    cmp     #$ff
+    cmp     #$ff                ; DEMO_MODE?
     lda     gameState           ; display colors in demo mode
     bcc     .notDemoMode
     ora     #DEMO_MODE
@@ -1921,7 +1930,7 @@ ContInitCart
 
 ; *** setup player, enemy & bonus speeds ***
 .runningMode
-TIM_SS ; ~91 cycles (more to VSYNC?)
+TIM_SPS ; 56..91 cycles (more to VSYNC?)
     lda     #0
     sta     .playerSpeed
     lda     playerSpeed
@@ -1942,7 +1951,6 @@ TIM_SS ; ~91 cycles (more to VSYNC?)
     bcc     .skipIncEnemy
     inc     .enemySpeed         ; +4
 .skipIncEnemy
-
     lda     frameCnt            ; 3
     lsr                         ; 2
     bcc     .skipBonusSpeed     ; 2/3=  7/8
@@ -1957,7 +1965,7 @@ TIM_SS ; ~91 cycles (more to VSYNC?)
     inc     .bonusSpeed         ; 5
 .skipIncBonus                   ;   = 24/28
 .skipBonusSpeed
-TIM_SE
+TIM_SPE
 
 ; *** move players, enemies and bonuses ***
     ldx     #NUM_PLAYERS-1
@@ -2391,40 +2399,55 @@ PrepareDisplay SUBROUTINE
 
     ldy     #ID_BLANK
     sty     .numberDigit
+    ldy     #NUM_PLAYERS-1
 
     bit     gameState
-    bmi     .startRunningMode       ; GAME_START|GAME_RUNNING
+    bpl     .notRunningMode
+    jmp     .startRunningMode       ; GAME_START|GAME_RUNNING
+
+.notRunningMode
     bvc     .selectMode             ; GAME_SELECT
 ;---------------------------------------------------------------
 ; GAME_OVER
 
 .countHuman = .ignored
-
+; if all players are AI (demo mode), show all 8 AI scores:
+    lax     playerAI
+    inx                             ; DEMO_MODE?
+    beq     .demoMode
 ; count human players:
-    ldx     #-1
-    ldy     #NUM_PLAYERS-1
-    lda     playerAI
+    ldy     #-1
+    ldx     #NUM_PLAYERS-1
 .loopCountHuman
     lsr
     bcs     .isAI
-    inx
+    iny
 .isAI
-    dey
+    dex
     bpl     .loopCountHuman
-    stx     .countHuman             ; TODO: if all players are AI, display...? Or no game over?
+.demoMode
+    sty     .countHuman
 ; check timer and update game state counter:
     ldx     playerIdx
     lda     frameCnt
     bpl     .sameRank
-    lda     #120
+    lda     #FPS*2
     sta     frameCnt
     lsr     waitedOver
-.nextRank
     dex
     bpl     .skipReset
+DEBUG4
+    lda     playerAI
+    cmp     #$ff
+    bcc     .notDemoMode
+    lda     #0
+.notDemoMode
+    sta     nxtIgnoredScores
     ldx     .countHuman
     inx                         ; display high score
 .skipReset
+    lda     nxtIgnoredScores
+    sta     ignoredScores
     stx     playerIdx
 .sameRank
 ; check for high score display:
@@ -2433,9 +2456,9 @@ PrepareDisplay SUBROUTINE
     bcc     .notHighScore
     ldx     #NUM_PLAYERS
     stx     .player
-    lda     #60
+    lda     #FPS
     cmp     frameCnt
-.displayHighScore
+;.displayHighScore
     lda     #ID_LETTER_H
     sta     .number
     lda     #ID_LETTER_I
@@ -2453,18 +2476,21 @@ PrepareDisplay SUBROUTINE
     sec
     sbc     .count
     sta     .number             ; displayed rank - 1
+    lda     ignoredScores
+;  lda     #0
     inc     .number
     jsr     GetNthPlayerScore
+    sta     nxtIgnoredScores
     ldy     #ID_DOT
     sty     .numberDigit
-    lda     #60
+    lda     #FPS
     bne     .contGameOver
 ;---------------------------------------------------------------
 .selectMode
 ; display bonus mode and level (B.LvLL):
-    ldx     #8
-    stx     .player
-;    lda     #60
+    iny                         ; Y = NUM_PLAYERS - 1
+    sty     .player
+;    lda     #FPS
 ;    cmp     frameCnt
 ;    bcc     .displayHighScore
     ldy     #ID_BLANK
@@ -2502,6 +2528,7 @@ PrepareDisplay SUBROUTINE
     bne     .contStartMode
 ;---------------------------------------------------------------
 .runningMode
+TIM_SCS ; 523..759 cycles
   IF TOP_SCORE
 ; determine player with maximum score:
     jsr     Get1stPlayerScore   ; get for largest score
@@ -2600,6 +2627,7 @@ PrepareDisplay SUBROUTINE
     sta     .scorePtr3+1        ; 3
     sta     .scorePtr4+1        ; 3
     sta     .scorePtr5+1        ; 3 = 20
+TIM_SCE
 ; /VerticalBlank
 TIM_VE
     jmp     DrawScreen
@@ -2607,68 +2635,50 @@ TIM_VE
 ;---------------------------------------------------------------
 Get1stPlayerScore SUBROUTINE
 ;---------------------------------------------------------------
-    lda     #0
-GetNthPlayerScore
 ; A = n-1
+TIM_GNPDS   ; 376 cycles
 
 .maxLo      = tmpVars
 .ignored    = tmpVars+1
-.count      = tmpVars+2
+;.count      = tmpVars+2                do NOT remove! (or update other code too)
 .player     = tmpVars+3
 .tmpIgnored = tmpVars+4
 
-TIM_4a
-    sta     .count
 ; display AI scores in demo mode:
-    lda     gameState
-    and     #DEMO_MODE
-    bne     .demoMode
     lda     playerAI
+    cmp     #$ff            ;           DEMO_MODE?
+    beq     .demoMode
     NOP_W
 .demoMode
     lda     #0
-.loopNthCount
-    sta     .ignored        ;           ignore AI players
-    sta     .tmpIgnored
-    lda     #0
-    sta     .maxLo
-    tax
-    txs                     ;           in case there are no active players
-    ldx     #NUM_PLAYERS-1
-TIM_5a
+GetNthPlayerScore           ;           A = previous players with higher scores
+    sta     .ignored        ; 3         ignore AI players
+    lda     #0              ; 2
+    sta     .maxLo          ; 3
+    sta     .player         ; 3         in case there are no active players
+    ldx     #NUM_PLAYERS-1  ; 2 = 16
 .loopNthMax
-    asl     .tmpIgnored     ; 5         already selected?
+    asl     .ignored        ; 5         already selected?
     bcs     .nextNthMax     ; 2/3        yes, skip
     cmp     scoreHiLst,x    ; 4
     bcc     .setNthMax      ; 2/3
     bne     .nextNthMax     ; 2/3
-    ldy     scoreLoLst,x    ; 4
+    ldy     scoreLoLst,x    ; 4         (cpy abs,x is no opcode)
     cpy     .maxLo          ; 3
     bcc     .nextNthMax     ; 2/3
 .setNthMax
     lda     scoreHiLst,x    ; 4
     ldy     scoreLoLst,x    ; 4
     sty     .maxLo          ; 3
-;    stx     .player         ; 3
-    txs                     ; 2
+    stx     .player         ; 3         nth largest score player idx
 .nextNthMax
     dex                     ; 2
     bpl     .loopNthMax     ; 3/2       12..38
-TIM_5b
-;    ldx     .player
-    tsx
-    lda     .ignored
-    ora     Pot2Bit,x
-    dec     .count
-    bpl     .loopNthCount
-TIM_4b
-; max 1972
-    stx     .player
-    txa
-    ldx     #$fd
-    txs
-    tax
-; X = nth player
+    ldx     .player         ; 3
+    lda     ignoredScores   ; 3
+    ora     Pot2Bit,x       ; 4
+; X = nth player, A = ignored
+TIM_GNPDE
     rts
 
 ;---------------------------------------------------------------
@@ -3077,7 +3087,7 @@ HMoveTbl
 
 PlayerCol ; align LineCols!
   IF NTSC_COL
-    .byte   BROWN|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+    .byte   RED|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
     .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
 ;    .byte   GREEN_YELLOW|$f, CYAN|$f, VIOLET|$f, BROWN|$f
 ;    .byte   GREEN|$f, BLUE|$f, RED|$f, YELLOW|$f
@@ -3088,9 +3098,6 @@ PlayerCol ; align LineCols!
     .byte   WHITE   ; score display
     CHECKPAGE PlayerCol
 
-;EnemyPtr
-;    .byte   <EnemyGfx0, <EnemyGfx0, <EnemyGfx1, <EnemyGfx1
-;    CHECKPAGE EnemyPtr ;
 EnemyColPtr
     .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
     .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
@@ -3099,7 +3106,7 @@ EnemyColPtr
 LINE_LUM    = $a
 LineCols
   IF NTSC_COL
-    .byte   BROWN|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
+    .byte   RED|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
     .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
   ELSE
     .byte   WHITE|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM

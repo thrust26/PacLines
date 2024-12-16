@@ -33,6 +33,14 @@ NTSC_COL        = 0
 NTSC_TIM        = 1
   ENDIF
 
+  IF NTSC_TIM
+SCANLINES       = 262
+FPS             = 60    ; 1.193.182 / SCANLINES / 76 (NTSC; PAL-M: 1.191.870)
+  ELSE
+SCANLINES       = 312
+FPS             = 50    ; 1.182.298 / SCANLINES / 76 (PAL; SECAM: 1.187.500)
+  ENDIF
+
 
 ;===============================================================================
 ; C O L O R - C O N S T A N T S
@@ -43,9 +51,9 @@ BLACK           = $00
 WHITE           = $0e
   IF NTSC_COL               ; GREY
 YELLOW          = $10       ; GOLD                    0
-BROWN           = $20       ; ORANGE                  7
+BROWN           = $20       ; ORANGE
 ORANGE          = $30       ; RED-ORANGE              4
-RED             = $40       ; PINK
+RED             = $40       ; PINK                    7
 MAUVE           = $50       ; PURPLE                  1
 VIOLET          = $60       ; PURPLE_BLUE
 PURPLE          = $70       ; BLUE                    5
