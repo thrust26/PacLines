@@ -22,7 +22,7 @@
 ; - sound
 ;   + only human players
 ;   o prios:
-;     o channel 0: death, bonus, waka-waka (alternating "wa" and "ka")
+;     o channel 0: death (add end sound & gfx?), bonus, waka-waka (alternating "wa" and "ka")
 ;     + channel 1: enemy eaten, eyes, scared, siren (pitch based on game speed)
 ;   o countdown
 ;   ? start
@@ -44,8 +44,8 @@
 ;   + reset
 ;     + when game variation changes
 ;     + keep for same variation as high score
-;   o display
-;     - do not display "Ln. 0"
+;   + display
+;     + do not display "Ln. 0"
 ;   - save (PlusROM, SaveKey)
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
@@ -2295,15 +2295,17 @@ PrepareDisplay SUBROUTINE
     lsr     waitedOver
     dex
     bpl     .skipReset
-DEBUG4
     lda     playerAI
-    cmp     #$ff
+    cmp     #$ff                ; demo mode?
     bcc     .notDemoMode
     lda     #0
 .notDemoMode
     sta     nxtIgnoredScores
     ldx     .countHuman
-    inx                         ; display high score
+    lda     hiScoreLvl
+    beq     .hiScoreNotSet
+    inx                         ; display high score first
+.hiScoreNotSet
 .skipReset
     lda     nxtIgnoredScores
     sta     ignoredScores
@@ -2317,7 +2319,6 @@ DEBUG4
     stx     .player
     lda     #FPS
     cmp     frameCnt
-;.displayHighScore
     lda     #ID_LETTER_H
     sta     .number
     lda     #ID_LETTER_I
