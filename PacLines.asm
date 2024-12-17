@@ -21,7 +21,7 @@
 ; TODOs:
 ; - sound
 ;   + only human players
-;   o- prios:
+;   o prios:
 ;     o channel 0: death, bonus, waka-waka (alternating "wa" and "ka")
 ;     + channel 1: enemy eaten, eyes, scared, siren (pitch based on game speed)
 ;   o countdown
@@ -43,17 +43,13 @@
 ;   - play sound for new high score
 ;   + reset
 ;     + when game variation changes
-;     + keep for same variation as high score (were to store?)
+;     + keep for same variation as high score
 ;   o display
+;     - do not display "Ln. 0"
 ;   - save (PlusROM, SaveKey)
-;   - do not display "Ln. 0"
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
 ; ? deadly bonuses (mushrooms)
-; o better player animation
-;   + alive, based on pos
-;   - dead, based on id, where to store??? (xBonusLst?)
-;   ? remove ghost at death
 ; ? support old and new controls
 
 ; Ideas:
@@ -147,6 +143,10 @@
 ;     (dP/sP < dE/sE => dP*sE < dE*sP)
 ;   x simplyfied: reverse at 8 - dist enemy from its border
 ;   + move to middle pellets after power pill
+; + better player animation
+;   + alive, based on pos
+;   + dead, based on power timer
+;   + remove ghost at death
 
 
 ;---------------------------------------------------------------
@@ -192,6 +192,7 @@ TOP_SCORE       = 1 ; (-41) display top score (else player who last changed leve
 LARGE_POWER     = 0 ; (+/-0) rectangular power up
 BUTTON_DIR      = 1 ; (+6, +1 RAM) button press directly determines direction
 KILL_AI         = 1 ; (-4) enemies can kill AI players
+BIG_MOUTH       = 1 ; (0) bigger mouth for player
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -260,7 +261,7 @@ ENEMY_PTS       = 10
 DIFF_MASK       = $03       ; game variation
 BONUS_GAME      = $04       ; bonus game flag
 VAR_MASK        = DIFF_MASK|BONUS_GAME
-DEMO_MODE       = $08
+;unused         = $08
 QT_RIGHT        = $10       ; bit 5==0: left QuadTari; bit 4==1: right QuadTari
 QT_LEFT         = $20
 QT_MASK         = QT_LEFT|QT_RIGHT
@@ -714,7 +715,7 @@ LinesBranches
     lda     .lineCol            ; 3
     pha                         ; 3 = 14    color
 ; prepare power-up (not drawn from stack):
-    lda     xPowerLst,x         ; 4         x-pos           BUG#1: this can become $ff!
+    lda     xPowerLst,x         ; 4         x-pos
     ldx     #4                  ; 2 =  6    index
 ;---------------------------------------
     ldy     #0                  ; 2         color   @01
@@ -797,10 +798,24 @@ TIM_0b
     sta     WSYNC
 ;---------------------------------------
     sta     COLUBK              ; 3 =  3
-;TIM_1a ; timers have problems with preceding WSYNCs!
+TIM_1a ; timers have problems with preceding WSYNCs!
 ; setup player sprite pointer:
     lda     PlayerCol,x         ; 4
     sta     .color0             ; 3
+    lda     playerDone          ; 3
+    and     Pot2Bit,x           ; 4
+    beq     .playerAlive        ; 2/3=16/17
+; death animation:
+    lda     powerTimLst,x       ; 4
+    lsr                         ; 2
+    lsr                         ; 2
+    lsr                         ; 2
+    clc                         ; 2
+    adc     #NUM_ALIVE_PTR      ; 2
+    tay                         ; 2
+    bpl     .playerLeft         ; 3 = 19+7
+
+.playerAlive
     lda     xPlayerLst,x        ; 4         animate in sync with position (= speed based)
     and     #7                  ; 2
     tay                         ; 2
@@ -810,31 +825,12 @@ TIM_0b
     iny                         ; 2         adjust animation when going right
 .playerLeft
     lda     PlayerPtr,y         ; 4
-    sta     .ptr0               ; 3 = 32/33
-
-;; setup player sprite direction:
-;    ldy     #8-1                ; 2
-;    lda     playerLeft          ; 3
-;    and     Pot2Bit,x           ; 4
-;    beq     .right0             ; 2/3
-;    iny                         ; 2
-;.right0
-;    sty     REFP0               ; 3 = 15/16 ;
-;; constant timing code:
-;    ldy     #7                  ; 2
-;    lda     playerLeft          ; 3
-;    and     Pot2Bit,x           ; 4
-;    beq     .right0             ; 2/3
-;    NOP_B                       ; 1
-;.right0
-;    iny                         ; 2
-;    sty     REFP0               ; 3 = 17
-
+    sta     .ptr0               ; 3 = 25/26
 ; setup power-up pointer:
     ldy     #2                  ; 2
     lda     #0                  ; 2
-TIM_1b  ; 17..18 (+6) cycles
-    sta     WSYNC               ; 3 =  5
+TIM_1b  ; 46..47 (+6) cycles
+    sta     WSYNC               ; 3 =  7
 ;---------------------------------------
     sta     HMOVE               ; 3
 TIM_2a
@@ -845,8 +841,8 @@ TIM_2a
 .showPower                      ;   =  9/10
     sty     .enaBl              ; 3 =  9
 ; draw enemy or bonus:
-    bit     .bonusFlag          ; 3
-    bmi     .drawEnemy          ; 2/3
+    bit     .bonusFlag          ; 3         bonus frame?
+    bmi     .drawEnemy          ; 2/3        no, flicker draw enemy
     lda     xBonusLst,x         ; 4
     eor     #X_BONUS_OFF        ; 2
     beq     .drawEnemy          ; 2/3=13/14
@@ -878,7 +874,32 @@ TIM_2a
     ldy     #<EnemyEyesGfx      ; 2
     bne     .setPtr1            ; 3
 
-.powerOn                        ;           @51
+.powerOff
+    ldy     #<GreyCol           ; 2
+    bcs     .setPtrCol1         ; 2/3       AI row
+    ldy     EnemyColPtr,x       ; 4
+.setPtrCol1
+    sty     .ptrCol1            ; 3 = 8/11
+    ldy     #<EnemyGfx0         ; 2
+    lda     xEnemyLst,x         ; 4
+    and     #$04                ; 2
+    bne     .setPtr1            ; 2/3
+    ldy     #<EnemyGfx1         ; 2
+    NOP_W                       ; 2
+.hideEnemy
+    ldy     #<NoEnemyGfx        ; 2
+    bne     .setPtr1            ; 3
+
+.drawEnemy                      ;
+    lda     Pot2Bit,x           ; 4
+    bit     playerDone          ; 3
+    bne     .hideEnemy          ; 2/3
+    bit     enemyEyes           ; 3
+    bne     .drawEyes           ; 2/3= 9/10
+; setup colors:
+    lda     powerTimLst,x       ; 4
+    beq     .powerOff           ; 2/3= 6/7
+; power on:
     ldy     #<GreyCol           ; 2
     bcs     .setColPtr1x        ; 2/3       AI row
     ldy     #<EnemyColDark      ; 2
@@ -894,27 +915,7 @@ TIM_2a
     lda     xEnemyLst,x         ; 4             animate in sync with position (= speed based)
     and     #$04                ; 2
     bne     .setPtr1            ; 2/3
-    ldy     #<EnemyDarkGfx1     ; 2
-    bne     .setPtr1            ; 3 = 13
-
-.drawEnemy                      ;
-    lda     Pot2Bit,x           ; 4
-    bit     enemyEyes           ; 3
-    bne     .drawEyes           ; 2/3= 9/10
-; setup colors:
-    lda     powerTimLst,x       ; 4
-    bne     .powerOn            ; 2/3= 6/7
-; power off:                    ;
-    ldy     #<GreyCol           ; 2
-    bcs     .setPtrCol1         ; 2/3       AI row
-    ldy     EnemyColPtr,x       ; 4
-.setPtrCol1
-    sty     .ptrCol1            ; 3 = 8/11
-    ldy     #<EnemyGfx0         ; 2
-    lda     xEnemyLst,x         ; 4
-    and     #$04                ; 2
-    bne     .setPtr1            ; 2/3
-    ldy     #<EnemyGfx1         ; 2
+    ldy     #<EnemyDarkGfx1     ; 2 = 10
 .setPtr1
     sty     .ptr1               ; 3 =  3
 ; setup enemy reflection:
@@ -942,7 +943,7 @@ TIM_2a
     lax     (.ptrCol1),y        ; 5         overwrites X!
     lda     .color0             ; 3
     and     (.ptrCol0),y        ; 5
-TIM_2b ; 108..145 (+6) cycles
+TIM_2b ; 101..146 (+6) cycles (76 * 3 = 158)
     sta     WSYNC               ; 3 = 34
 ;---------------------------------------
     sta     COLUP0              ; 3
@@ -1180,7 +1181,7 @@ OverScan SUBROUTINE
     lda     #63
   ENDIF
     sta     TIM64T
-TIM_OS                              ; ~ 2091 cycles
+TIM_OS                              ; ~2189/2300/2356 cycles
 
     bit     gameState
     bmi     .startRunningMode       ; GAME_RUNNING|GAME_OVER
@@ -1194,7 +1195,7 @@ TIM_OS                              ; ~ 2091 cycles
     ldx     #NUM_PLAYERS-1
 .loopMax
     lda     playerAI                ; only human players increase speeds (except for demo mode)
-    cmp     #$ff                    ; DEMO_MODE?
+    cmp     #$ff                    ; demo mode?
     beq     .demoMode
     and     Pot2Bit,x
     bne     .nextMax
@@ -1315,7 +1316,7 @@ TIM_OS                              ; ~ 2091 cycles
     cmp     .maxLevel
     bcc     .skipIncSpeed
     lda     playerAI        ; only human players increase speeds (except for demo mode)
-    cmp     #$ff            ; DEMO_MODE?
+    cmp     #$ff            ; demo mode?
     beq     .demoModeInc
     and     Pot2Bit,x
     bne     .skipIncSpeed2
@@ -1447,24 +1448,18 @@ DEBUG3
     lda     #DEATH_VOL
     sta     AUDV0
 .skipKillSound
-; TODO: disable ghost instead of eyes:
-    lda     Pot2Bit,x
-    ora     enemyEyes
-    sta     enemyEyes
 ; disable player and check for game over:
+    lda     #(NUM_DEATH_PTR << 3) - 1
+    sta     powerTimLst,x
     lda     Pot2Bit,x
     ora     playerDone
     sta     playerDone
   IF KILL_AI
-    tay
-    lda     gameState
-    and     #DEMO_MODE
-    bne     .wait4AllDone
-    tya
+    ldy     playerAI
+    iny                       ; demo mode?
+    beq     .wait4AllDone     ;  yes
     ora     playerAI
-    NOP_B
 .wait4AllDone
-    tya
   ELSE
     ora     playerAI
   ENDIF
@@ -1478,9 +1473,13 @@ DEBUG3
     lda     #2
     sta     waitedOver
 ; check for new high score:
-    lda     gameState
-    and     #DEMO_MODE
-    bne     .skipHiScore
+  IF KILL_AI
+    tya                         ; demo mode?
+  ELSE
+    ldy     playerAI
+    iny                         ; demo mode?
+  ENDIF
+    beq     .skipHiScore        ;  yes
     jsr     Get1stPlayerScore   ; get for largest score
     ldy     scoreLoLst,x        ; player in X
     lda     scoreHiLst,x
@@ -1550,7 +1549,8 @@ DEBUG3
     bcs     .contEnemySound     ;  yes, continue current sound
 ; enemy eyes?
     ldx     #EYES_IDX
-    lda     playerAI            ; ignore AI lines
+    lda     playerAI            ; ignore AI and dead players
+    ora     playerDone
     eor     #$ff
     and     enemyEyes
     bne     .startEnemySound
@@ -1560,6 +1560,9 @@ DEBUG3
     ldx     #NUM_PLAYERS-1
 .loopPowerTim
     lda     playerAI            ; ignore enemy lines
+    and     Pot2Bit,x
+    bne     .nextPlayer
+    lda     playerDone          ; no scared audio if powerTimLst,x is currently used for death animation
     and     Pot2Bit,x
     bne     .nextPlayer
     lda     powerTimLst,x
@@ -1572,7 +1575,7 @@ DEBUG3
     bpl     .loopPowerTim
 ; siren sound?
     lda     playerAI            ; ignore AI lines
-    cmp     #$ff                ; DEMO_MODE?
+    cmp     #$ff                ; demo mode?
     beq     .stopSound1         ;  yes, no sound
     cpy     #SIREN_END          ; siren sound playing?
     bcs     .contEnemySound     ;  yes, continue current sound
@@ -1606,6 +1609,18 @@ DEBUG3
     sty     audIdx1
 .skipGameRunning
 ; 2133 cyles for loop
+
+    ldx     #NUM_PLAYERS-1
+.loopDeathAnim
+    lda     playerDone
+    and     Pot2Bit,x
+    beq     .nextDeath
+    lda     powerTimLst,x
+    beq     .nextDeath
+    dec     powerTimLst,x
+.nextDeath
+    dex
+    bpl     .loopDeathAnim
 
 ; *** Player sounds ***
     ldy     audIdx0
@@ -1673,7 +1688,7 @@ VerticalBlank SUBROUTINE
     lda     #77
   ENDIF
     sta     TIM64T
-TIM_VS                          ; ~2833 cycles
+TIM_VS                          ; ~2355 cycles
 
 ; *** check console switches ***
     lda     SWCHB
@@ -1787,7 +1802,6 @@ ContInitCart
 .contReset
     lda     gameState
     eor     #GAME_SELECT^GAME_START
-    and     #~DEMO_MODE
     sta     gameState
 
     lda     #COUNT_START
@@ -1891,14 +1905,8 @@ ContInitCart
     sta     .tmpXPowerLst,x
     dex
     bpl     .loopReset
-; initialize demo mode & speeds:
-    lda     playerAI
-    cmp     #$ff                ; DEMO_MODE?
-    lda     gameState           ; display colors in demo mode
-    bcc     .notDemoMode
-    ora     #DEMO_MODE
-.notDemoMode
-; switch to running mode
+; switch to running mode & initialize speeds:
+    lda     gameState
     eor     #GAME_START^GAME_RUNNING
     sta     gameState
     and     #DIFF_MASK
@@ -2132,8 +2140,6 @@ TIM_SPE
   ENDIF
 
 .aiPlayer
-.absXPlayer     = tmpVars+4
-.absXEnemy      = tmpVars+5
 ; only ~2 random AI players/frame:
     txa
     eor     randomLo
@@ -2159,7 +2165,6 @@ TIM_SPE
     cmp     xEnemyLst,x
     bcc     .enemyRight
 ; enemy left:
-; TODO: avoid tmp vars
 ; (159 - xPlayer) * 1.5 - (159 - xEnemy) >= 0  ->  right
 ; 239 - xPlayer * 1.5 - 159 + xEnemy     >= 0
 ; 80 - xPlayer * 1.5 + xEnemy            >= 0
@@ -2267,7 +2272,7 @@ PrepareDisplay SUBROUTINE
 .countHuman = .ignored
 ; if all players are AI (demo mode), show all 8 AI scores:
     lax     playerAI
-    inx                             ; DEMO_MODE?
+    inx                             ; demo mode?
     beq     .demoMode
 ; count human players:
     ldy     #-1
@@ -2500,7 +2505,7 @@ TIM_GNPDS   ; 376 cycles
 
 ; display AI scores in demo mode:
     lda     playerAI
-    cmp     #$ff            ;           DEMO_MODE?
+    cmp     #$ff            ;           demo mode?
     beq     .demoMode
     NOP_W
 .demoMode
@@ -2534,6 +2539,7 @@ GetNthPlayerScore           ;           A = previous players with higher scores
 ; X = nth player, A = ignored
 TIM_GNPDE
     rts
+; /Get1stPlayerScore
 
 ;---------------------------------------------------------------
 GameInit SUBROUTINE
@@ -2552,7 +2558,11 @@ GameInit SUBROUTINE
     ldx     #NUM_PLAYERS-1
 .loopPf
     jsr     SetupPowerPellets
+  IF BIG_MOUTH = 0
     lda     #SCW*1/2-16     ; at right of left power-ups
+  ELSE
+    lda     #SCW*1/2-16-1   ; at right of left power-ups
+  ENDIF
     sta     xPlayerLst,x
     lda     #SCW-8-1        ; right border-1
     sta     xEnemyLst,x
@@ -2565,20 +2575,6 @@ GameInit SUBROUTINE
 
     stx     VDELP0
     stx     VDELBL
-
-; random initial directions:
-;    jsr     NextRandom
-;    sta     playerLeft
-; 1 randomly disabled player at the bottom:
-;    jsr     NextRandom
-;    and     #3              ; bottom 4 rows
-;    tax
-;    lda     Pot2Bit,x
-;    lda     #$ff
-;    sta     playerAI
-;    sta     playerDone
-;    sta     enemyEyes
-
     rts
 ; /GameInit
 
@@ -2595,9 +2591,8 @@ AddScore
     adc     scoreHiLst,x
     bcc     .setScore
   IF !KILL_AI
-    lda     gameState
-    and     #DEMO_MODE
-    eor     #DEMO_MODE
+    lda     playerAI
+    eor     #$ff            ; demo mode?
     beq     .demoMode
   ENDIF
     lda     Pot2Bit,x       ; stop player
@@ -2656,37 +2651,35 @@ NextRandom SUBROUTINE
     rts
 ; /NextRandom
 
-;    ALIGN_FREE 256
-;
-;;---------------------------------------------------------------
-;SetXPos SUBROUTINE
-;;---------------------------------------------------------------
-;    sec
-;    ldy     #0
-;    sta     WSYNC
-;;---------------------------------------
-;    nop                     ; 2
-;    nop     HMOVE           ; 3
-;    sty     COLUBK          ; 3
-;WaitObject:
-;    sbc     #$0f            ; 2
-;    bcs     WaitObject      ; 3/2
-;
-;  CHECKPAGE WaitObject
-;    tay                     ; 2
-;    lda     HMoveTbl-$f1,y  ; 5!
-;    sta     RESP0,x         ; 4     @23..73!
-;    sta     WSYNC
-;;---------------------------------------
-;;    sta     HMCLR
-;    sta     HMP0,x          ; 4
-;    rts
-;; SetXPos
-
 
 ;===============================================================================
 ; R O M - T A B L E S (Bank 0)
 ;===============================================================================
+
+LVL_0   = 1    ; all must not divide by 4!
+LVL_1   = 7
+LVL_2   = 14
+LVL_3   = 22
+
+VarLevels
+    .byte   LVL_0, LVL_1, LVL_2, LVL_3
+PlayerSpeeds
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
+EnemySpeeds
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
+
+Pot2Mask
+    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
+
+Pot2Bit
+    .byte   $01, $02, $04, $08, $10, $20, $40, $80
+    CHECKPAGE Pot2Bit
 
     ALIGN_FREE_LBL 256, "DigitGfx"
 
@@ -2926,7 +2919,7 @@ HMoveTbl
     ERR
   ENDIF
 
-    .byte   " Pac-Lines x 8 - Demo V"
+    .byte   " Pac-Lines x 8 - V"
     VERSION_STR
     .byte   " - (C) 2024 Thomas Jentzsch "
 
@@ -2938,7 +2931,6 @@ HMoveTbl
   ENDIF
 
 ;    ALIGN_FREE_LBL 256, "PlayerCol"
-
 PlayerCol ; align LineCols!
   IF NTSC_COL
     .byte   RED|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
@@ -2952,11 +2944,6 @@ PlayerCol ; align LineCols!
     .byte   WHITE   ; score display
     CHECKPAGE PlayerCol
 
-EnemyColPtr
-    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
-    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
-    CHECKPAGE EnemyColPtr
-
 LINE_LUM    = $a
 LineCols
   IF NTSC_COL
@@ -2967,31 +2954,6 @@ LineCols
     .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
   ENDIF
     CHECKPAGE LineCols
-
-LVL_0   = 1    ; all must not divide by 4!
-LVL_1   = 7
-LVL_2   = 14
-LVL_3   = 22
-
-VarLevels
-    .byte   LVL_0, LVL_1, LVL_2, LVL_3
-PlayerSpeeds
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
-EnemySpeeds
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
-
-Pot2Mask
-    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
-
-Pot2Bit
-    .byte   $01, $02, $04, $08, $10, $20, $40, $80
-    CHECKPAGE Pot2Bit
 
 ; Bonus Scores:
 ; Pellet          10      1

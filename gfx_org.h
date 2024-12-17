@@ -300,6 +300,8 @@ EnemyDarkGfx1
     .byte   %00111110
     .byte   %00111110
     .byte   %00011100
+NoEnemyGfx
+    ds      GFX_H - 6, 0
 EnemyEyesGfx            ; can be overlapped
     .byte   %00000000
     .byte   %00000000
@@ -446,7 +448,17 @@ PlayerPtr
     .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx0, <PlayerGfx0
     .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx2, <PlayerGfx2
     .byte   <PlayerGfx1 ; one extra for left moving
+NUM_ALIVE_PTR  = . - PlayerPtr
+    .byte   <PlayerDeadGfx7, <PlayerDeadGfx6, <PlayerDeadGfx5, <PlayerDeadGfx4, <PlayerDeadGfx3
+    .byte   <PlayerDeadGfx2, <PlayerDeadGfx1,  <PlayerDeadGfx0, <PlayerGfx0
+    .byte   <PlayerGfx0
+NUM_DEATH_PTR   = . - NUM_ALIVE_PTR - PlayerPtr
     CHECKPAGE PlayerPtr
+
+EnemyColPtr
+    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
+    .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
+    CHECKPAGE EnemyColPtr
 
 BonusPtr
 ; (Cherry, Strawberry, Orange, Apple, Melon, Grapes, Banana, Pear)
@@ -479,6 +491,7 @@ PlayerGfx0
     .byte   %00111110
     .byte   %00011100
 GFX_H = . - PlayerGfx0
+  IF BIG_MOUTH = 0
 PlayerGfx1
     .byte   %00011100
     .byte   %00111110
@@ -509,75 +522,123 @@ PlayerGfx2
     .byte   %00111100
     .byte   %00111110
     .byte   %00011100
+  ELSE
+PlayerGfx1
+    .byte   %00011100
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %01111110
+    .byte   %01111100
+    .byte   %01111000
+    .byte   %01100000
+    .byte   %01100000
+    .byte   %01111000
+    .byte   %01101100
+    .byte   %01101110
+    .byte   %00111110
+    .byte   %00111110
+    .byte   %00011100
+PlayerGfx2
+    .byte   %00011100
+    .byte   %00111100
+    .byte   %00111000
+    .byte   %01111000
+    .byte   %01111000
+    .byte   %01110000
+    .byte   %01100000
+    .byte   %01100000
+    .byte   %01110000
+    .byte   %01101000
+    .byte   %01101000
+    .byte   %00111000
+    .byte   %00111100
+    .byte   %00011100
+  ENDIF
 
 PlayerDeadGfx0
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
     .byte   %00011100
     .byte   %00111110
     .byte   %00111110
     .byte   %01111111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %01110111
     .byte   %01110111
     .byte   %01110111
     .byte   %01100011
-    .byte   %01100011
-    .byte   %01000001
-    .byte   %01000001
+    .byte   %00100010
+    .byte   %00100010
+    .byte   %00000000
+    .byte   %00000000
 PlayerDeadGfx1
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
     .byte   %00010100
     .byte   %00111110
     .byte   %01111111
     .byte   %01111111
-    .byte   %01100011
-    .byte   %01000001
+    .byte   %01111111
+    .byte   %01110111
+    .byte   %01110111
+    .byte   %00100010
+    .byte   %00000000
+    .byte   %00000000
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
 PlayerDeadGfx2
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
     .byte   %00110110
     .byte   %01111111
     .byte   %01111111
     .byte   %01111111
     .byte   %01111111
-    .byte   %00011100
+    .byte   %01111111
+    .byte   %01100011
+    .byte   %00000000
+    .byte   %00000000
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
 PlayerDeadGfx3
-    .byte   %00000000
     .byte   %00110110
     .byte   %01111111
     .byte   %01111111
     .byte   %01111111
-    .byte   %00111110
+    .byte   %01111111
     .byte   %00011100
-    .byte   %00011100
-    .byte   %00001000
+PlayerDeadGfx7
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    ds      GFX_H - . + PlayerDeadGfx7, 0
 PlayerDeadGfx4
+    .byte   %00100010
+    .byte   %01110111
+    .byte   %01111111
+    .byte   %01111111
+    .byte   %00111110
+    .byte   %00011100
+    .byte   %00011100
+    .byte   %00001000
     .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+PlayerDeadGfx5
     .byte   %00010100
+    .byte   %00111110
     .byte   %00111110
     .byte   %00011100
     .byte   %00011100
     .byte   %00011100
-    .byte   %00011100
     .byte   %00001000
     .byte   %00001000
     .byte   %00000000
@@ -585,20 +646,38 @@ PlayerDeadGfx4
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
-PlayerDeadGfx
-    .byte   %00100010
-    .byte   %00010100
-    .byte   %01000000
-    .byte   %00100001
-    .byte   %00000010
-    .byte   %01100000
-    .byte   %00000111
-    .byte   %01100000
-    .byte   %00000111
-    .byte   %00100000
-    .byte   %01000010
-    .byte   %00000001
-    .byte   %00010100
-    .byte   %00100010
+    .byte   %00000000
+PlayerDeadGfx6
+    .byte   %00000000
+    .byte   %00001000
+    .byte   %00001000
+    .byte   %00001000
+    .byte   %00001000
+    .byte   %00001000
+    .byte   %00001000
+    .byte   %00001000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00000000
+
+
+;PlayerDeadGfx
+;    .byte   %00100010
+;    .byte   %00010100
+;    .byte   %01000000
+;    .byte   %00100001
+;    .byte   %00000010
+;    .byte   %01100000
+;    .byte   %00000111
+;    .byte   %01100000
+;    .byte   %00000111
+;    .byte   %00100000
+;    .byte   %01000010
+;    .byte   %00000001
+;    .byte   %00010100
+;    .byte   %00100010
     CHECKPAGE PlayerGfx
 
