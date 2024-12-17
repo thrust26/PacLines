@@ -2160,20 +2160,18 @@ TIM_SPE
     bcc     .enemyRight
 ; enemy left:
 ; TODO: avoid tmp vars
-    lda     #159
-    sbc     xEnemyLst,x
-    sta     .absXEnemy
-    lda     #159
-    sbc     xPlayerLst,x
-    sta     .absXPlayer
+; (159 - xPlayer) * 1.5 - (159 - xEnemy) >= 0  ->  right
+; 239 - xPlayer * 1.5 - 159 + xEnemy     >= 0
+; 80 - xPlayer * 1.5 + xEnemy            >= 0
+; xPlayer * 1.5 - 80 - xEnemy            <= 0  ->  right
     lsr
-    adc     .absXPlayer
-    sbc     .absXEnemy
-    bcs     .moveRight
-    cmp     #-4             ; consider minimum overlap
-    bcs     .moveRight
-    cmp     #-140           ; consider wrap around
-    bcs     .skipAI
+    adc     xPlayerLst,x
+    sbc     xEnemyLst,x
+    bcc     .moveRight
+    sbc     #SCW/2+4        ; consider minimum overlap
+    bcc     .moveRight
+    cmp     #SCW-16-4       ; consider wrap around
+    bcc     .skipAI
 .moveLeft
     lda     playerLeft
     ora     Pot2Bit,x
@@ -2187,7 +2185,7 @@ TIM_SPE
     bcs     .moveLeft
     cmp     #-4             ; consider minimum overlap
     bcs     .moveLeft
-    cmp     #-140           ; consider wrap around
+    cmp     #-SCW+16        ; consider wrap around
     bcs     .skipAI
 .moveRight
     lda     playerLeft
