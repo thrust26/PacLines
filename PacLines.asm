@@ -49,7 +49,6 @@
 ; ? wider enemies?
 ; ? deadly bonuses (mushrooms)
 ; ? support old and new controls
-; - fire after game over should directly start new game (like RESET)
 ; - display high score during game select
 
 ; Ideas:
@@ -150,6 +149,7 @@
 ;   + dead, based on power timer
 ;   + remove ghost at death
 ; + 1st select after game over must not change variation
+; + fire after game over should directly start new game (like RESET)
 
 ;---------------------------------------------------------------
 ; Code structure
@@ -272,7 +272,7 @@ HISCORE_DINGED  = $08
 QT_RIGHT        = $10       ; bit 5==0: left QuadTari; bit 4==1: right QuadTari
 QT_LEFT         = $20
 QT_MASK         = QT_LEFT|QT_RIGHT
-GAME_SELECT     = $00
+;GAME_SELECT     = $00
 GAME_START      = $80
 GAME_RUNNING    = $c0
 GAME_OVER       = $40
@@ -557,28 +557,6 @@ ScoreLums
     .byte   $fc
     .byte   $fa
     .byte   $f8
-;; rounded:
-;    .byte   $f8
-;    .byte   $fa
-;    .byte   $fc
-;    .byte   $fc
-;    .byte   $fc
-;    .byte   $fc
-;    .byte   $fc
-;    .byte   $fc
-;    .byte   $fe
-;    .byte   $0e
-;; chrome:
-;    .byte   $fa
-;    .byte   $f8
-;    .byte   $f6
-;    .byte   $f4
-;    .byte   $f2
-;    .byte   $fe
-;    .byte   $fe
-;    .byte   $fc
-;    .byte   $fc
-;    .byte   $fa
     CHECKPAGE ScoreLums
 
 ;    ds  10, 0   ; line kernel alignment (tight contraints!)
@@ -1164,8 +1142,8 @@ Start SUBROUTINE
     ror                     ; 2         bit 7==0: left QuadTari; ; bit 6==1: right QuadTari
     lsr                     ; 2
     lsr                     ; 2
-    and     #QT_MASK        ; 2
-    ora     #GAME_SELECT
+    and     #QT_MASK        ; 2         TODO: required?
+    sec
     jmp     ContInitCart
 ;---------------------------------------------------------------
 
@@ -1735,11 +1713,12 @@ TIM_VS                          ; ~2355 cycles
     bmi     .skipSwitches
     ora     #DEBOUNCE
     sta     debounce
+.buttonReset
     php                         ; remember RESET bit
     jsr     GameInit
     lax     gameState
     and     #~GAME_MASK
-    ora     #GAME_SELECT
+;    ora     #GAME_SELECT       ; = $00
     cmp     gameState
     sta     gameState
     beq     .alreadyInSelect
@@ -1809,12 +1788,13 @@ TIM_VS                          ; ~2355 cycles
     lda     waitedOver          ; waited for display of 1st score?
     bne     .skipRunningJmp     ;  no, continue
     lda     gameState           ;  yes, switch to GAME_SELECT
-    eor     #GAME_OVER^GAME_SELECT
-
+    eor     #GAME_OVER          ;  ^GAME_SELECT (=$00)
     sta     hiScoreVar
-ContInitCart
+    clc
+ContInitCart                    ; enters with CF=1
+    eor     #GAME_OVER
     sta     gameState
-    jsr     GameInit
+    jmp     .buttonReset
 
 .skipRunningJmp
     jmp     .skipRunning
@@ -1836,8 +1816,8 @@ ContInitCart
 ;---------------------------------------------------------------
 ; wait for button release & press to switch to start
 .contReset
-    lda     gameState
-    eor     #GAME_SELECT^GAME_START
+    lda     #GAME_START     ; ^GAME_SELECT = $00
+    eor     gameState
     sta     gameState
 
     lda     #COUNT_START
