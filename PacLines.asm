@@ -26,9 +26,9 @@
 ;     o channel 0: death (add end sound & gfx?), bonus, waka-waka (alternating "wa" and "ka")
 ;     + channel 1: enemy eaten, eyes, scared, siren (pitch based on game speed)
 ;   o countdown
-;   ? start
-;   ? game over sound
-;   - new high score (player sound, 10x ding)
+;   x start
+;   x game over sound
+;   + new high score (player sound, 10x ding)
 ; o demo mode
 ;   ? automatic start
 ; ? larger power-up pellet
@@ -40,7 +40,7 @@
 ; o high score
 ;   + score and level
 ;   + determine
-;   - play sound for new high score (when reached and was not zero before)
+;   + play sound for new high score (when reached and was not zero before)
 ;   + reset
 ;     + when game variation changes
 ;     + keep for same variation as high score
@@ -71,7 +71,7 @@
 ;     + enemies and players seperately
 ;     + by value
 ;     + enemies slower than players at start
-;     + enemies accelerates faster than players
+;     + enemies accelerate faster than players
 ;     + maximum speed for players and enemies
 ;     + players reach maximum speed earlier than enemies
 ;   + different start levels (e.g. 1, 5, 9; displayed with starting level)
@@ -1532,28 +1532,25 @@ DEBUG3
 ; enemy eaten sound?
     ldy     audIdx1
   IF HISCORE_DING
-DEBUG0
     cpy     #HISCORE_END
     bcc     .notHiScore
-    dec     audIdx1
     tya
     sbc     #HISCORE_END+DING_LEN
     bcc     .longDing
-    ldx     #NUM_SHORT_DINGS-1    ; number of short repeats
+    ldx     #NUM_SHORT_DINGS-1  ; number of short repeats
 .loopHiScore
     dex
-    sbc     #SHORT_DING_LEN       ; repeated sequence length
+    sbc     #SHORT_DING_LEN     ; repeated sequence length
     bcs     .loopHiScore
 .longDing
-    adc     #DING_LEN
-    tay
-    lda     DingVolTbl,y
+    tax
+    lda     DingVolTbl-$100+DING_LEN,x
     sta     AUDV1
     lda     #$4
     sta     AUDC1
-    lda     #$04                ; or 5
-    sta     AUDF1
-    bpl     .contHiScore
+    ldx     #$04                ; or 5
+    bne     .setAudF1
+
 .notHiScore
   ENDIF
     cpy     #EYES_END           ; eaten or eyes sound playing?
@@ -1601,7 +1598,7 @@ DEBUG0
     ldx     AudF1Tbl,y
     beq     .stopSound1
     cpy     #SIREN_START+1
-    bcs     .noSiren
+    bcs     .setAudF1
     lda     .maxLevel           ; increase pitch every 2nd level
     lsr
     eor     #$ff
@@ -1611,14 +1608,13 @@ DEBUG0
 .addLevel
     adc     AudF1Tbl,y
     tax
-.noSiren
+.setAudF1
     stx     AUDF1
     dey
     NOP_W
 .stopSound1
     ldy     #0
     sty     audIdx1
-.contHiScore
 .skipGameRunning
 ; 2133 cyles for loop
 
@@ -2334,6 +2330,7 @@ PrepareDisplay SUBROUTINE
     stx     .player
     lda     #FPS
     cmp     frameCnt
+;.displayHighScore
     lda     #ID_LETTER_H
     sta     .number
     lda     #ID_LETTER_I
@@ -2367,9 +2364,9 @@ PrepareDisplay SUBROUTINE
 ; display bonus mode and level (B.LvLL):
     iny                         ; Y = NUM_PLAYERS - 1
     sty     .player
-;    lda     #FPS
-;    cmp     frameCnt
-;    bcc     .displayHighScore
+;  lda     frameCnt
+;  cmp     #FPS
+;  bcc     .displayHighScore
     ldy     #ID_BLANK
     lda     gameState
     and     #BONUS_GAME
@@ -2623,7 +2620,6 @@ AddScore
     cld
   IF HISCORE_DING
 ; compare with current highscore and make sound if reached:
-DEBUG1
     tay
     lda     playerAI
     and     Pot2Bit,x
@@ -3210,8 +3206,9 @@ NUM_SHORT_DINGS = NUM_DINGS - 1 ; 9 short dings and a long one
 DingVolTbl
     .byte   0
     ds      8, 1
+    ds      2, 2
 ShortDingVol
-    ds      4, 2
+    ds      2, 2
     ds      2, 3
     ds      2, 4
     .byte   5, 6, 8, 10, 12
