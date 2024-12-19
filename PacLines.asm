@@ -1,4 +1,4 @@
-; Pac-Lines x 8
+; Pac-Line x 8
 ;
 ; (C)2024 - Thomas Jentzsch
 
@@ -64,6 +64,7 @@
 ;   ? ZPH: Cats, Toys, Treats
 ;   ? ...
 ; - countdown with Pac-Man
+; x high score screen (787 cycles per line?)
 
 ; DONEs:
 ; + difficulty ramp up
@@ -150,6 +151,7 @@
 ;   + remove ghost at death
 ; + 1st select after game over must not change variation
 ; + fire after game over should directly start new game (like RESET)
+; + start with bonus game variations
 
 ;---------------------------------------------------------------
 ; Code structure
@@ -172,7 +174,7 @@
 ; A S S E M B L E R - S W I T C H E S
 ;===============================================================================
 
-VERSION         = $0030
+VERSION         = $0090
 BASE_ADR        = $f000     ; 4K
 
   IFNCONST TV_MODE ; manually defined here
@@ -187,8 +189,8 @@ ILLEGAL         = 1
 DEBUG           = 1
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey
-PLUSROM         = 0 ; (-~50)
-COPYRIGHT       = 1 ; (-57) add copyright notice into code
+PLUSROM         = 1 ; (-41)
+COPYRIGHT       = 1 ; (-56) add copyright notice into code
 
 RAND16          = 0 ; (-3) 16-bit random values
 FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
@@ -249,14 +251,14 @@ BONUS_MASK      = (1<<BONUS_SHIFT)-1
 DELTA_SPEED     = 140                   ; 40% delta; start: player d% faster, end: enemy d% faster
 INIT_EN_SPEED   = 48
 DIFF_EN_SPEED   = 7-1
-MAX_EN_SPEED    = 255
-INIT_PL_SPEED   = (INIT_EN_SPEED * DELTA_SPEED + 50) / 100    ; -> equal speed after 8 levels
-DIFF_PL_SPEED   = DIFF_EN_SPEED - 2
-MAX_PL_SPEED    = (MAX_EN_SPEED * 100 + DELTA_SPEED / 2) / DELTA_SPEED
-    ECHO "      player vs enemy"
-    ECHO "Speeds: ", [MAX_PL_SPEED]d, "vs", [MAX_EN_SPEED]d
-    ECHO "Ranges:", [MAX_PL_SPEED*100/8]d, "vs", [MAX_EN_SPEED*100/12]d
-    ECHO ""
+MAX_EN_SPEED    = 255                   ; reached after 35 levels
+INIT_PL_SPEED   = (INIT_EN_SPEED * DELTA_SPEED + 50) / 100    ; -> equal speed after ~9 levels
+DIFF_PL_SPEED   = DIFF_EN_SPEED - 2                                     ; = 4
+MAX_PL_SPEED    = (MAX_EN_SPEED * 100 + DELTA_SPEED / 2) / DELTA_SPEED  ; reached after 29 levels
+;    ECHO "      player vs enemy"
+;    ECHO "Speeds: ", [MAX_PL_SPEED]d, "vs", [MAX_EN_SPEED]d
+;    ECHO "Ranges:", [MAX_PL_SPEED*100/8]d, "vs", [MAX_EN_SPEED*100/12]d
+;    ECHO ""
 
 PELLET_PTS      = 1
 POWER_PTS       = 5
@@ -264,8 +266,8 @@ ENEMY_PTS       = 10
 
 ; gameState constants:
 DIFF_MASK       = $03       ; game variation
-BONUS_GAME      = $04       ; bonus game flag
-VAR_MASK        = DIFF_MASK|BONUS_GAME
+NO_BONUS_GAME   = $04       ; no bonus game flag
+VAR_MASK        = DIFF_MASK|NO_BONUS_GAME
   IF HISCORE_DING
 HISCORE_DINGED  = $08
   ENDIF
@@ -356,7 +358,8 @@ scoreLst        ds  NUM_PLAYERS*2           ; 16 bytes
 scoreLoLst      = scoreLst
 scoreHiLst      = scoreLst+NUM_PLAYERS
 NUM_RESETS      = . - resetLst
-hiScoreLst      ds  3
+HISCORE_BYTES   = 3
+hiScoreLst      ds  HISCORE_BYTES
 hiScoreLo       = hiScoreLst
 hiScoreHi       = hiScoreLst+1
 hiScoreLvl      = hiScoreLst+2
@@ -373,6 +376,12 @@ RAM_END         = .
 ; temp vars and stack form a consecutive area:
 tmpVars         = $100 - STACK_SIZE - NUM_TMPS
 
+  IF PLUSROM
+WriteToBuffer       = $1ff0     ; MUST be $1xxx (used for detection)!
+WriteSendBuffer     = $1ff1
+;ReceiveBuffer       = $1ff2
+;ReceiveBufferSize   = $1ff3
+  ENDIF
 
 ;===============================================================================
 ; M A C R O S
@@ -417,7 +426,8 @@ DEBUG_BYTES SET DEBUG_BYTES + 1
   ENDM
 
   MAC _CHECKPAGE ; internal, do not use directly
-    IF >{1} != >{2}
+    IF (PASS > 0) && (>{1} != >{2})
+     LIST ON
       ECHO ""
      IF {3} != ""
       ECHO "ERROR: different pages! (", {3}, "=", {2}, ",", {1}, ")"
@@ -427,22 +437,27 @@ DEBUG_BYTES SET DEBUG_BYTES + 1
       ECHO ""
       ERR
     ENDIF
+    LIST ON
   ENDM
 
   MAC CHECKPAGE_LBL
-    _CHECKPAGE ., {1}, {2}
+    LIST OFF
+      _CHECKPAGE ., {1}, {2}
   ENDM
 
   MAC CHECKPAGE
+    LIST OFF
     CHECKPAGE_LBL {1}, ""
   ENDM
 
   MAC CHECKPAGE_DATA_LBL
+    LIST OFF
 _ADDR SET . - 1 ; hack to convince DASM
     _CHECKPAGE _ADDR, {1}, {2}
   ENDM
 
   MAC CHECKPAGE_DATA
+    LIST OFF
     CHECKPAGE_DATA_LBL {1}, ""
   ENDM
 
@@ -481,7 +496,7 @@ FREE_TOTAL SET FREE_TOTAL + FREE_GAP$
   ENDM
 
   MAC COND_ALIGN_FREE_LBL ; space required, alignement, "label"
-;    LIST OFF
+    LIST OFF
    IF (>(. + {1} - 1)) > (>.)
     ALIGN_FREE_LBL {2}, {3}
    ENDIF
@@ -489,7 +504,7 @@ FREE_TOTAL SET FREE_TOTAL + FREE_GAP$
   ENDM
 
   MAC COND_ALIGN_FREE ; space required, alignement
-;    LIST OFF
+    LIST OFF
     COND_ALIGN_FREE_LBL {1}, {2}, ""
   ENDM
 
@@ -503,6 +518,17 @@ FREE_TOTAL SET FREE_TOTAL + FREE_GAP$
     LIST OFF
     ORG_FREE_LBL {1}, ""
   ENDM
+
+  MAC NEXT_PASS
+   IFNCONST PASS
+PASS SET 0
+   ELSE
+PASS SET PASS + 1
+    ECHO "Pass:", [PASS]d
+   ENDIF
+  ENDM
+
+  NEXT_PASS
 
   MAC HEX2BCD ; hex value
 ; Hex2Bcd (good 0-99), 22 bytes, 26 cycles:
@@ -519,6 +545,15 @@ FREE_TOTAL SET FREE_TOTAL + FREE_GAP$
     adc     BcdTbl,y        ; 4
     cld                     ; 2 = 26
   ENDM
+
+ IF PLUSROM
+PLUSROM_ID  = 84                ;           Pac-Line x 8 game id in Highscore DB
+
+  MAC COMMIT_PLUSROM_SEND
+    lda     #PLUSROM_ID
+    sta     WriteSendBuffer     ;           send request to backend...
+  ENDM
+ ENDIF ; /PLUSROM
 
 
 ;===============================================================================
@@ -836,7 +871,7 @@ TIM_2a
 ; draw bonus:
     lda     levelLst,x          ; 4
   REPEAT BONUS_SHIFT
-    lsr                         ; 2/4/6     every 2nd/4th/8th.. level
+    lsr                         ; 2/4/6     every 4th level
   REPEND                        ;   =  6..10
     and     #NUM_BONUS-1        ; 2
     tay                         ; 2
@@ -1341,8 +1376,8 @@ TIM_OS                              ; ~2189/2300/2356 cycles
 ; reset bonus:
     ldy     #X_BONUS_OFF    ; disable bonus
     lda     gameState
-    and     #BONUS_GAME
-    beq     .skipBonus
+    and     #NO_BONUS_GAME
+    bne     .skipBonus
     lda     levelLst,x
     and     #BONUS_MASK     ; every 4th level
     bne     .skipBonus
@@ -1450,7 +1485,7 @@ DEBUG3
     ora     playerAI
   ENDIF ;}
     eor     #$ff
-    bne     .skipCXSprite
+    bne     .skipCXSpriteJmp
 ; game over, display scores:
     sta     lastButtons         ; A = 0
     sta     frameCnt
@@ -1460,7 +1495,7 @@ DEBUG3
     sta     waitedOver
 ; check for new high score:
   IF KILL_AI
-    tya                         ; demo mode?
+    tya                         ; demo mode? (Y = playerAI + 1)
   ELSE ;{
     ldy     playerAI
     iny                         ; demo mode?
@@ -1479,6 +1514,19 @@ DEBUG3
     sta     hiScoreHi
     lda     levelLst,x
     sta     hiScoreLvl
+  IF PLUSROM
+; only new high scores are send:
+    lda     gameState
+    and     #VAR_MASK
+    sta     WriteToBuffer
+    ldx     #HISCORE_BYTES-1
+.loopSendHiScore
+    lda     hiScoreLst,x
+    sta     WriteToBuffer       ; line, hi, lo
+    dex
+    bpl     .loopSendHiScore
+    COMMIT_PLUSROM_SEND
+  ENDIF
 .skipHiScore
     lda     gameState
     eor     #GAME_RUNNING^GAME_OVER
@@ -2369,8 +2417,8 @@ PrepareDisplay SUBROUTINE
 ;  bcc     .displayHighScore
     ldy     #ID_BLANK
     lda     gameState
-    and     #BONUS_GAME
-    beq     .noBonus
+    and     #NO_BONUS_GAME
+    bne     .noBonus
     ldy     #ID_BONUS
 .noBonus
     sty     .number
@@ -2694,25 +2742,7 @@ NextRandom SUBROUTINE
 ; R O M - T A B L E S (Bank 0)
 ;===============================================================================
 
-LVL_0   = 1    ; all must not divide by 4!
-LVL_1   = 7
-LVL_2   = 14
-LVL_3   = 22
-
-VarLevels
-    .byte   LVL_0, LVL_1, LVL_2, LVL_3
-PlayerSpeeds
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
-EnemySpeeds
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
-
-    ALIGN_FREE_LBL 256, "DigitGfx"
+    COND_ALIGN_FREE_LBL DIGIT_GFX_LEN, 256, "DigitGfx"
 
 DigitGfx ; font is "Level-Up"
 Four
@@ -2935,15 +2965,13 @@ EnaBlTbl                ; can be overlapped with PearGfx
 ;    ds      1, %10
     ds      POWER_H, %10
     ds      (GFX_H-POWER_H)/2, 0
-
+DIGIT_GFX_LEN = . - DigitGfx
     CHECKPAGE_DATA_LBL DigitGfx, "DigitGfx"
 
-Pot2Mask
-    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
-
-Pot2Bit
-    .byte   $01, $02, $04, $08, $10, $20, $40, $80
-    CHECKPAGE Pot2Bit
+  IF PLUSROM
+PlusROM_API
+    .byte "a", 0, "h.firmaplus.de", 0
+  ENDIF
 
 HMoveTbl
 ; this is calculated with 1 cycle extra on access
@@ -2963,6 +2991,32 @@ HMoveTbl
   IF THEME_ALT_1
     include     "gfx_alt.h"
   ENDIF
+
+Pot2Mask
+    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
+
+Pot2Bit
+    .byte   $01, $02, $04, $08, $10, $20, $40, $80
+    CHECKPAGE Pot2Bit
+
+LVL_0   = 1    ; all must NOT divide by 4! (bonus levels)
+LVL_1   = 7
+LVL_2   = 14
+LVL_3   = 22
+
+VarLevels
+    .byte   LVL_0, LVL_1, LVL_2, LVL_3
+PlayerSpeeds
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
+EnemySpeeds
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
+
 
 ;    ALIGN_FREE_LBL 256, "PlayerCol"
 PlayerCol ; align LineCols!
@@ -3019,33 +3073,6 @@ ButtonBit
     .byte   %10000000
   CHECKPAGE ButtonBit
 
-
-StartLoIds
-    .byte   ID_BLANK<<4|ID_BLANK
-    .byte   ID_BLANK<<4|ID_BLANK
-;    .byte   ID_BLANK<<4|ID_BLANK
-;    .byte   ID_BLANK<<4|ID_BLANK
-;    .byte   ID_PELLET<<4|ID_BLANK
-;    .byte   ID_PELLET<<4|ID_PELLET
-StartMidIds
-    .byte   ID_BLANK<<4|ID_BLANK
-    .byte   ID_BLANK<<4|ID_BLANK
-;    .byte   ID_PELLET<<4|ID_BLANK
-;    .byte   ID_PELLET<<4|ID_PELLET
-;    .byte   ID_PELLET<<4|ID_PELLET
-;    .byte   ID_PELLET<<4|ID_PELLET
-StartHiIds
-    .byte   ID_PELLET<<4|ID_BLANK
-    .byte   ID_PELLET<<4|ID_PELLET
-    .byte   ID_PELLET<<4|ID_PELLET
-    .byte   ID_PELLET<<4|ID_PELLET
-    .byte   ID_PELLET<<4|ID_PELLET
-    .byte   ID_PELLET<<4|ID_PELLET
-COUNT_START = . - StartHiIds
-
-    .byte   "QUADTARI"
-
-
 LeftDigitPtr
     .byte   <Zero, <One, <Two, <Three, <Four
     .byte   <Five, <Six, <Seven, <Eight, <Nine
@@ -3076,7 +3103,34 @@ ID_Letter_N = . - RightDigitPtr
 ID_LETTER_I = . - RightDigitPtr
     .byte   <Letter_I
 
-    ALIGN_FREE_LBL 256, "PfColTbl"
+BcdTbl
+    .byte $00, $06, $12, $18, $24, $30, $36
+;    .byte $42, $48, $54, $60, $66
+
+StartLoIds
+    .byte   ID_BLANK<<4|ID_BLANK
+    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_PELLET
+StartMidIds
+    .byte   ID_BLANK<<4|ID_BLANK
+    .byte   ID_BLANK<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_BLANK
+;    .byte   ID_PELLET<<4|ID_PELLET
+;    .byte   ID_PELLET<<4|ID_PELLET
+;    .byte   ID_PELLET<<4|ID_PELLET
+StartHiIds
+    .byte   ID_PELLET<<4|ID_BLANK
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+    .byte   ID_PELLET<<4|ID_PELLET
+COUNT_START = . - StartHiIds
+
+    COND_ALIGN_FREE_LBL GFX_H, 256, "PfColTbl"
 
 PfColTbl = . - (GFX_H-POWER_H)/2 - 4
 PowerStart
@@ -3089,10 +3143,6 @@ PowerStart
 POWER_H = . - PowerStart + 4
 ;    ds      (GFX_H-POWER_H)/2, 0        ; ball disabled anyway
     CHECKPAGE (. + (GFX_H-POWER_H/2))    ; but still must not cross a page!
-
-BcdTbl
-    .byte $00, $06, $12, $18, $24, $30, $36
-;    .byte $42, $48, $54, $60, $66
 
   IF COPYRIGHT
     .byte   "JTZ"
@@ -3218,7 +3268,7 @@ SHORT_DING_LEN    = . - ShortDingVol
 
 CopyRight
   IF COPYRIGHT
-    .byte   " Pac-Lines x 8 - V"
+    .byte   " Pac-Line x 8 - V"
     VERSION_STR
    IF NTSC_COL
     .byte   " (NTSC)"
@@ -3229,8 +3279,18 @@ CopyRight
   ENDIF
 COPYRIGHT_LEN SET . - CopyRight
 
+  IF !PLUSROM
+    .byte   "QUADTARI"
 
-    ORG_FREE_LBL BASE_ADR | $ffc, "Vectors"
+    ORG_FREE_LBL BASE_ADR + $ffc, "Vectors"
+  ELSE
+    ORG_FREE_LBL BASE_ADR + $ff0, "PlusROM Hotspots"
+
+    .byte   "QUADTARI"
+
+    ORG_FREE_LBL BASE_ADR + $ffa, "Vectors"
+    .word PlusROM_API - BASE_ADR + $1000 ; must be $1xxx!
+  ENDIF
 Vectors
     .word   Start
     .word   VERSION
@@ -3243,7 +3303,7 @@ Vectors
     LIST OFF
     ECHO ""
     ECHO "*** Free RAM   :", [$100 - STACK_SIZE - NUM_TMPS - RAM_END]d, "bytes ***"
-    ECHO "*** Free ROM   :", [FREE_TOTAL + DEBUG_BYTES]d, "bytes ***"
+    ECHO "*** Free ROM   :", [FREE_TOTAL + DEBUG_BYTES + COPYRIGHT_LEN]d, "bytes ***"
     ECHO ""
     ECHO "*** Debug bytes:", [DEBUG_BYTES]d, "bytes ***"
   IF COPYRIGHT_LEN
