@@ -1,9 +1,9 @@
-# Pac-Lines x 8
+# Pac-Line x 8
 Copyright 2024 - Thomas Jentzsch
 
 ## The Game
 
-**Pac-Lines x 8** is a 4K, one button, up to eight simultaneous players Pac-Line game for the Atari 2600.
+**Pac-Line x 8** is a 4K, one button, up to eight simultaneous players Pac-Line game for the Atari 2600.
 
 ## Controls
 ### Paddles
@@ -45,9 +45,9 @@ When the game is over, the high score of the current game variation will be disp
 The high score will be reset when a game with a different variation is started.
 
 ## Acknowledgements
-**Pac-Lines x 8** has been developed and tested with **Stella**, the best emulator for the Atari 2600. The Pac-Lines x 8 is based on _Paku Paku_ (https://abagames.github.io/crisp-game-lib-11-games/?pakupaku).
+**Pac-Line x 8** has been developed and tested with **Stella**, the best emulator for the Atari 2600. The Pac-Line x 8 is based on _Paku Paku_ (https://abagames.github.io/crisp-game-lib-11-games/?pakupaku).
 
 Thanks to the AtariAge community for testing the game and providing valuable input.
 
 ## Legal
-This game is freeware, but copyrighted; it may be freely distributed, but it **must** be always accompanied by this documentation file. This program may be included on websites and shareware or freeware compilations, but please contact me first. You **cannot** distribute Pac-Lines x 8 on Atari 2600 cartridges without my **explicit** permission.
+This game is freeware, but copyrighted; it may be freely distributed, but it **must** be always accompanied by this documentation file. This program may be included on websites and shareware or freeware compilations, but please contact me first. You **cannot** distribute Pac-Line x 8 on Atari 2600 cartridges without my **explicit** permission.
