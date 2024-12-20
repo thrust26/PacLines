@@ -211,9 +211,13 @@ PlayerPtr
     .byte   <PlayerGfx1, <PlayerGfx1, <PlayerGfx2, <PlayerGfx2
     .byte   <PlayerGfx1 ; one extra for left moving
 NUM_ALIVE_PTR  = . - PlayerPtr
-    .byte   <PlayerDeadGfx7, <PlayerDeadGfx6, <PlayerDeadGfx5, <PlayerDeadGfx4, <PlayerDeadGfx3
+      .byte   <PlayerDeadEnd
+  IF LONG_DEATH
+    .byte   <PlayerDeadGfx7
+  ENDIF
+    .byte   <PlayerDeadGfx6, <PlayerDeadGfx5, <PlayerDeadGfx4, <PlayerDeadGfx3
     .byte   <PlayerDeadGfx2, <PlayerDeadGfx1,  <PlayerDeadGfx0, <PlayerGfx0
-    .byte   <PlayerGfx0
+    .byte   <PlayerGfx0, <PlayerGfx0
 NUM_DEATH_PTR   = . - NUM_ALIVE_PTR - PlayerPtr
     CHECKPAGE PlayerPtr
 
@@ -514,8 +518,8 @@ PlayerGfx0
     .byte   %01101111
     .byte   %00111110
     .byte   %00111110
-    .byte   %00011100
-GFX_H = . - PlayerGfx0
+;    .byte   %00011100
+GFX_H = . - PlayerGfx0 + 1
   IF BIG_MOUTH = 0
 PlayerGfx1
     .byte   %00011100
@@ -531,7 +535,7 @@ PlayerGfx1
     .byte   %01101111
     .byte   %00111110
     .byte   %00111110
-    .byte   %00011100
+;    .byte   %00011100
 PlayerGfx2
     .byte   %00011100
     .byte   %00111110
@@ -546,7 +550,7 @@ PlayerGfx2
     .byte   %01101100
     .byte   %00111100
     .byte   %00111110
-    .byte   %00011100
+;    .byte   %00011100
   ELSE
 PlayerGfx1
     .byte   %00011100
@@ -562,7 +566,7 @@ PlayerGfx1
     .byte   %01101110
     .byte   %00111110
     .byte   %00111110
-    .byte   %00011100
+;    .byte   %00011100
 PlayerGfx2
     .byte   %00011100
     .byte   %00111100
@@ -577,9 +581,8 @@ PlayerGfx2
     .byte   %01101000
     .byte   %00111000
     .byte   %00111100
-    .byte   %00011100
+;    .byte   %00011100
   ENDIF
-
 PlayerDeadGfx0
     .byte   %00011100
     .byte   %00111110
@@ -632,7 +635,7 @@ PlayerDeadGfx3
     .byte   %01111111
     .byte   %01111111
     .byte   %00011100
-PlayerDeadGfx7
+PlayerDeadEnd
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
@@ -641,7 +644,7 @@ PlayerDeadGfx7
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
-    ds      GFX_H - . + PlayerDeadGfx7, 0
+    ds      GFX_H - . + PlayerDeadEnd, 0
 PlayerDeadGfx4
     .byte   %00100010
     .byte   %01110111
@@ -671,7 +674,7 @@ PlayerDeadGfx5
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
-    .byte   %00000000
+;    .byte   %00000000
 PlayerDeadGfx6
     .byte   %00000000
     .byte   %00001000
@@ -687,5 +690,37 @@ PlayerDeadGfx6
     .byte   %00000000
     .byte   %00000000
     .byte   %00000000
+  IF LONG_DEATH
+PlayerDeadGfx7
+;    .byte   %00001000
+;    .byte   %01001001
+;    .byte   %00100010
+;    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %01000001
+;    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %01000001
+;    .byte   %00000000
+;    .byte   %00000000
+;    .byte   %00100010
+;    .byte   %01001001
+;    .byte   %00001000
+
+    .byte   %00001000
+    .byte   %01001000
+    .byte   %00100001
+    .byte   %00000010
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %01000000
+    .byte   %00000001
+    .byte   %00000000
+    .byte   %00000000
+    .byte   %00100000
+    .byte   %01000010
+    .byte   %00001001
+    .byte   %00001000
+  ENDIF
     CHECKPAGE PlayerGfx
 

@@ -213,6 +213,7 @@ KILL_AI         = 1 ; (-4) enemies can kill AI players
 BIG_MOUTH       = 1 ; (0) bigger mouth for player
 HISCORE_DING    = 1 ; (-99) 10 dings at new high score
 EXTEND_COUNTDOWN= 1 ; (-12) extends countdown with each new activated player
+LONG_DEATH      = 1 ; (-??) 0 is still TODO
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -1656,21 +1657,41 @@ TIM_A0S ; 40 (all AI)..102 (all human)
     ldy     audIdx0
     cpy     #DEATH_END
     bcc     .notDeath
+; 1st or 2nd part?
     tya
-    sbc     #DEATH_END
+    cmp     #DEATH_END1
+    bcs     .deathPart1
+DEBUG0
+    ldx     #0
+    cmp     #DEATH_END+DEATH_LEN2
+    bcc     .contDeathPart2
+    sbc     #DEATH_LEN2
+    bcs     .contDeathPart2
+; A = 0 .. DEATH_LEN2-1
+    DEBUG_BRK
+
+.deathPart1
+    sbc     #DEATH_END1
     ldx     #6*2            ; number repeats * 2
 .loopDeath
     dex
     dex
-    sbc     #DEATH_LEN      ; repeated sequence length
+    sbc     #DEATH_LEN1     ; repeated sequence length
     bcs     .loopDeath
+; A = -DEATH_LEN1 .. -1
+    adc     #DEATH_LEN1 + DEATH_END1 - DEATH_LEN2
+; A = DEATH_END1 .. DEATH_LEN1-1+DEATH_END1
+.contDeathPart2
     sta     WSYNC
 ;---------------------------------------
     tay
+    lda     AudF0Tbl,y
     txa
-    adc     AudF0Tbl+DEATH_END-$100+DEATH_LEN,y
+    clc
+    adc     AudF0Tbl,y
     tax
-    bcc     .contDeath
+    lda     #$4
+    bne     .contDeath
     DEBUG_BRK
 
 .notDeath
@@ -1678,8 +1699,8 @@ TIM_A0S ; 40 (all AI)..102 (all human)
 ;---------------------------------------
     ldx     AudF0Tbl,y          ; varies
     beq     .stopSound0
-.contDeath
     lda     #$c
+.contDeath
     sta     AUDC0
     dec     audIdx0
     stx     AUDF0
@@ -2026,8 +2047,9 @@ TIM_SPE
 ; check for game over:
 ; (let game continue until end of death sound)
     lda     powerTimLst,x       ; player dead?
-    beq     .nextMoveJmp        ;  yes, skip
+    beq     .checkDone          ;  yes, check only
     dec     powerTimLst,x
+.checkDone
     lda     audIdx0
     cmp     #DEATH_END          ; other (human) player still dying? TODO: AI player in demo mode?
     bcc     .noneDying          ;  nope, check if all dead
@@ -3180,19 +3202,13 @@ POWER_H = . - PowerStart + 4
 ; Eyes  : V=8; C=4; F=06, 07, 08, 09, 0a, 0b, 0c, 0d, 0f, 11, 13, 15, 18, 1b, 1f
 
 ; Fruit : V=e; C=C; F=09, 0a, 0b, 0d, 0f, 12, 15, 18, 1d, 1f, 1d, 1b, 19, 17, 15, 12, 0f, 0d, 0b, 0a, 09, 08
-; Death : V=e; C=4; F=06, 07, 08, 09, 0b, 0d, 10, 14, 1c
-;   C=C; F=0d, 1b, -, C=4; F=06, 07, 08, 09, 0b, 0d, 10, 14, 1c
-; C=4; F=
-
-; C=4; F=
-; 11, 10, 0f, 0e, 0d, 0e, 0f, 10, 11, 12, 13, 14
-; 13, 12, 11, 10, 0f, 10, 11, 12, 13, 14, 15, 16
-; 15, 14, 13, 12, 11, 12, 13, 14, 15, 16, 17, 18
-; 17, 16, 15, 14, 13, 14, 15, 16, 16, 18, 19, 1a
-; 19, 18, 17, 16, 15, 16, 17, 18, 19, 1a, 1b, 1c
-; 1b, 1a, 19, 18, 17, 18, 19, 1a, 1b, 1c, 1d, 1e
-; 1d
-; 1d + bang/bang
+; Death : V=e; C=4; F=06, 07, 08, 09, 0b, 0d, 10, 14, 1c ; C=C; F=0d, 1b   2x
+;   11, 10, 0f, 0e, 0d, 0e, 0f, 10, 11, 12, 13, 14
+;   13, 12, 11, 10, 0f, 10, 11, 12, 13, 14, 15, 16
+;   15, 14, 13, 12, 11, 12, 13, 14, 15, 16, 17, 18
+;   17, 16, 15, 14, 13, 14, 15, 16, 16, 18, 19, 1a
+;   19, 18, 17, 16, 15, 16, 17, 18, 19, 1a, 1b, 1c
+;   1b, 1a, 19, 18, 17, 18, 19, 1a, 1b, 1c, 1d, 1e
 
 WAKA_VOL    = $8    ; pellet eaten
 BONUS_VOL   = $c    ; bonus eaten
@@ -3227,8 +3243,12 @@ BONUS_END = . - AudF0Tbl + 1
     .byte   $08, $09, $0a, $0b, $0d, $0f, $12, $15, $17, $19, $1b
     .byte   $1d, $1f, $1d, $18, $15, $12, $0f, $0d, $0b, $0a, $09
 BONUS_START = . - AudF0Tbl - 1
-DEATH_END = . - AudF0Tbl + 1
+DEATH_END   = . - AudF0Tbl + 1
     .byte   0
+;    .byte   $06, $07, $08, $09, $0b, $0d, $10, $14;, $1c, $1f ; $0d, $1b
+    .byte   $06, $07, $08, $0a, $0d, $11, $16, $1d
+DEATH_LEN2  = . - AudF0Tbl - DEATH_END
+DEATH_END1  = DEATH_END + 2 * DEATH_LEN2
 ;final sounds missing here...
 ;    .byte   $1e, $1d, $1c, $1b, $1a, $19, $18, $17, $18, $19, $1a, $1b
 ;    .byte   $1c, $1b, $1a, $19, $18, $17, $16, $15, $16, $17, $18, $19
@@ -3236,8 +3256,8 @@ DEATH_END = . - AudF0Tbl + 1
 ;    .byte   $18, $17, $16, $15, $14, $13, $12, $11, $12, $13, $14, $15
 ;    .byte   $16, $15, $14, $13, $12, $11, $10, $0f, $10, $11, $12, $13
     .byte   $14, $13, $12, $11, $10, $0f, $0e, $0d, $0e, $0f, $10, $11
-DEATH_LEN   = . - AudF0Tbl - DEATH_END
-DEATH_START = . + 5 * DEATH_LEN - AudF0Tbl - 1
+DEATH_LEN1  = . - AudF0Tbl - DEATH_END - DEATH_LEN2
+DEATH_START = . + (6-1) * DEATH_LEN1 + (2-1) * DEATH_LEN2 - AudF0Tbl - 1
 
 ; *** Enemy Sounds ***
 SIREN_IDX   = 0
