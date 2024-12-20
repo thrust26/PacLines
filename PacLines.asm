@@ -1658,35 +1658,32 @@ TIM_A0S ; 40 (all AI)..102 (all human)
     cpy     #DEATH_END
     bcc     .notDeath
 ; 1st or 2nd part?
-DEBUG0
     tya
     sbc     #DEATH_END1
     bcs     .deathPart1
-DEBUG1
     ldx     #0
     and     #$07                ; == DEATH_LEN2 - 1
     bpl     .contDeathPart2
 
 .deathPart1
-    ldx     #6*2-1              ; number repeats * 2 (-1 for later CF set)
+; TODO? count up from zero? and subtract AudF0Tbl?
+    ldx     #6                  ; number repeats * 2
 .loopDeath
-    dex
     dex
     sbc     #DEATH_LEN1         ; repeated sequence length
     bcs     .loopDeath
 ; A = -DEATH_LEN1 .. -1
-    adc     #DEATH_LEN1 + DEATH_LEN2    ; sets CF = 1
-; A = DEATH_END1 .. DEATH_LEN1-1+DEATH_END1
+    adc     #DEATH_LEN1 + DEATH_LEN2
 .contDeathPart2
     sta     WSYNC
 ;---------------------------------------
     tay
     txa
+    asl
     adc     AudF0Tbl+DEATH_END,y
     tax
     lda     #$4
     bne     .contDeath
-    DEBUG_BRK
 
 .notDeath
     sta     WSYNC
