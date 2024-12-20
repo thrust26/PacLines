@@ -202,7 +202,7 @@ ILLEGAL         = 1
 DEBUG           = 1
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey
-PLUSROM         = 1 ; (-41)
+PLUSROM         = 0 ; (-41)
 COPYRIGHT       = 1 ; (-55/56) add copyright notices into code
 
 RAND16          = 0 ; (-3) 16-bit random values
@@ -1658,37 +1658,31 @@ TIM_A0S ; 40 (all AI)..102 (all human)
     cpy     #DEATH_END
     bcc     .notDeath
 ; 1st or 2nd part?
-    tya
-    cmp     #DEATH_END1
-    bcs     .deathPart1
 DEBUG0
+    tya
+    sbc     #DEATH_END1
+    bcs     .deathPart1
+DEBUG1
     ldx     #0
-    cmp     #DEATH_END+DEATH_LEN2
-    bcc     .contDeathPart2
-    sbc     #DEATH_LEN2
-    bcs     .contDeathPart2
-; A = 0 .. DEATH_LEN2-1
-    DEBUG_BRK
+    and     #$07                ; == DEATH_LEN2 - 1
+    bpl     .contDeathPart2
 
 .deathPart1
-    sbc     #DEATH_END1
-    ldx     #6*2            ; number repeats * 2
+    ldx     #6*2-1              ; number repeats * 2 (-1 for later CF set)
 .loopDeath
     dex
     dex
-    sbc     #DEATH_LEN1     ; repeated sequence length
+    sbc     #DEATH_LEN1         ; repeated sequence length
     bcs     .loopDeath
 ; A = -DEATH_LEN1 .. -1
-    adc     #DEATH_LEN1 + DEATH_END1 - DEATH_LEN2
+    adc     #DEATH_LEN1 + DEATH_LEN2    ; sets CF = 1
 ; A = DEATH_END1 .. DEATH_LEN1-1+DEATH_END1
 .contDeathPart2
     sta     WSYNC
 ;---------------------------------------
     tay
-    lda     AudF0Tbl,y
     txa
-    clc
-    adc     AudF0Tbl,y
+    adc     AudF0Tbl+DEATH_END,y
     tax
     lda     #$4
     bne     .contDeath
