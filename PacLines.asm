@@ -16,7 +16,6 @@
 
 ; BUGs:
 ; - AI players are not dying completely at end of game
-; - game starts with line not score
 ; - why is extra WSYNC required for Stella?
 
 ; TODOs:
@@ -161,6 +160,7 @@
 ;   + do not calc from scratch every frame (.maxLevel, firstPlayer)
 ;   + optimize code
 ;   + check timer and abandon early
+; + game starts with line not score
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -203,7 +203,7 @@ DEBUG           = 1
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey
 PLUSROM         = 1 ; (-41)
-COPYRIGHT       = 1 ; (-56) add copyright notice into code
+COPYRIGHT       = 1 ; (-55/56) add copyright notices into code
 
 RAND16          = 0 ; (-3) 16-bit random values
 FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
@@ -253,13 +253,6 @@ BONUS_MASK      = (1<<BONUS_SHIFT)-1
 ; spot from left or right. Meanwhile the enemy has to move 12 spots, which is
 ; 50% more. So the speed difference should be a bit below 50%.
 ; | o o o o o o o O . . . . O o o o o o o o|
-
-;INIT_PL_SPEED   = 80
-;DIFF_PL_SPEED   = 4
-;MAX_PL_SPEED    = 180
-;INIT_EN_SPEED   = INIT_PL_SPEED-8
-;DIFF_EN_SPEED   = DIFF_PL_SPEED+2       ; -> equal speed after 4 levels
-;MAX_EN_SPEED    = 240                   ; 33% faster than player
 
 DELTA_SPEED     = 140                   ; 40% delta; start: player d% faster, end: enemy d% faster
 INIT_EN_SPEED   = 48
@@ -715,12 +708,12 @@ DrawScreen SUBROUTINE
 .right0
     dey                         ; 2
     sty     REFP0               ; 3 = 13
-  ELSE ;THEME_ALT_1|THEME_ALT_2|THEME_ALT_3
+  ELSE ;{THEME_ALT_1|THEME_ALT_2|THEME_ALT_3
     sta     WSYNC               ; 3 =  3
 ;---------------------------------------
     sty     GRP1                ; 3         Y == 0!
     SLEEP   13
-  ENDIF
+  ENDIF ;}
 
     SLEEP   16-13
 X_OFS   = 48
@@ -989,7 +982,11 @@ TIM_2b ; 101..146 (+6) cycles (76 * 3 = 158)
     dey                         ; 2
     cpy     #(GFX_H+PELLET_H)/2 ; 2
     bcs     .loopTop            ; 3/2=7/6
-    SLEEP   26                  ;26
+
+    ldx     #5                  ; 2
+.waitPellet
+    dex                         ; 2
+    bne     .waitPellet         ; 3/2       = 26
     sta     CXCLR               ; 3         early enough
     tsx                         ; 2 = 31    SP = .loopCnt
 ; 1st pellet line:              ;           @58!
@@ -1649,9 +1646,8 @@ VerticalBlank SUBROUTINE
 ; - update player directions
 ; - prepare display
 
-    lda     #%1110              ; each '1' bits generate a VSYNC ON line (bits 1..3)
-.loopVSync
-    sta     WSYNC               ; 1st '0' bit resets Vsync, 2nd '0' bit exits loop
+    lda     #%10
+    sta     WSYNC
 ;---------------------------------------
     sta     VSYNC
 
@@ -1923,7 +1919,9 @@ ContInitCart                    ; enters with CF=1
     bpl     .loopStart
 
     lda     frameCnt
-    bne     .skipRunningJmp2
+    bpl     .skipRunningJmp2
+    dec     countDown
+    beq     .switch2Running
     lda     #WAKA_START
     sta     audIdx0
   IF !EXTEND_COUNTDOWN
@@ -1932,8 +1930,9 @@ ContInitCart                    ; enters with CF=1
     lda     #FPS*3/4
   ENDIF
     sta     frameCnt
-    dec     countDown
     bne     .skipRunningJmp2
+
+.switch2Running
 ; switch to running state:
 ; restore power-up:
     ldx     #NUM_PLAYERS-1
@@ -3049,12 +3048,12 @@ HMoveTbl
     include     "gfx_alt.h"
   ENDIF
 
-Pot2Mask
+Pot2Mask; 5x
     .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
 
-Pot2Bit
+Pot2Bit; 31x
     .byte   $01, $02, $04, $08, $10, $20, $40, $80
-    CHECKPAGE Pot2Bit
+    CHECKPAGE Pot2Bit ; inside kernel (also frequently used)
 
 LVL_0   = 1    ; all must NOT divide by 4! (bonus levels)
 LVL_1   = 7
@@ -3073,32 +3072,6 @@ EnemySpeeds
     .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
     .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
     .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
-
-
-;    ALIGN_FREE_LBL 256, "PlayerCol"
-PlayerCol ; align LineCols!
-  IF NTSC_COL
-    .byte   RED|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
-    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
-;    .byte   GREEN_YELLOW|$f, CYAN|$f, VIOLET|$f, BROWN|$f
-;    .byte   GREEN|$f, BLUE|$f, RED|$f, YELLOW|$f
-  ELSE
-    .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
-    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
-  ENDIF
-    .byte   WHITE   ; score display
-    CHECKPAGE PlayerCol
-
-LINE_LUM    = $a
-LineCols
-  IF NTSC_COL
-    .byte   RED|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
-    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
-  ELSE
-    .byte   WHITE|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
-    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
-  ENDIF
-    CHECKPAGE LineCols
 
 ; Bonus Scores:
 ; Pellet          10      1
@@ -3200,11 +3173,6 @@ PowerStart
 POWER_H = . - PowerStart + 4
 ;    ds      (GFX_H-POWER_H)/2, 0        ; ball disabled anyway
     CHECKPAGE (. + (GFX_H-POWER_H/2))    ; but still must not cross a page!
-
-  IF COPYRIGHT
-    .byte   "JTZ"
-COPYRIGHT_LEN SET COPYRIGHT_LEN + 3
-  ENDIF
 
 ; Dintari PacMan 8K:
 ; Siren : V=8; C=4; F=0e..1b, 1a..0f
@@ -3330,20 +3298,28 @@ CopyRight
    IF NTSC_COL
     .byte   " (NTSC)"
    ELSE
-    .byte   " (PAL-60)"
+    .byte   " (PAL60)"
    ENDIF
-    .byte   " - (C) 2024 Thomas Jentzsch "
+    .byte   " - (C)2024 Thomas Jentzsch "
   ENDIF
 COPYRIGHT_LEN SET . - CopyRight
 
   IF !PLUSROM
     .byte   "QUADTARI"
+  IF COPYRIGHT
+    .byte   "JTZ"
+COPYRIGHT_LEN SET COPYRIGHT_LEN + 3
+  ENDIF
 
     ORG_FREE_LBL BASE_ADR + $ffc, "Vectors"
   ELSE
-    ORG_FREE_LBL BASE_ADR + $ff0, "PlusROM Hotspots"
+    ORG_FREE_LBL BASE_ADR + $ff0-1, "PlusROM Hotspots" ; next 4 bytes must not be accessed!
 
     .byte   "QUADTARI"
+  IF COPYRIGHT
+    .byte   "JTZ"
+COPYRIGHT_LEN SET COPYRIGHT_LEN + 3
+  ENDIF
 
     ORG_FREE_LBL BASE_ADR + $ffa, "Vectors"
     .word PlusROM_API - BASE_ADR + $1000 ; must be $1xxx!

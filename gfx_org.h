@@ -234,6 +234,30 @@ BonusColPtr
     .byte   <MelonCol, <GrapesCol, <BananaCol
     CHECKPAGE BonusColPtr
 
+PlayerCol ; align LineCols!
+  IF NTSC_COL
+    .byte   RED|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
+;    .byte   GREEN_YELLOW|$f, CYAN|$f, VIOLET|$f, BROWN|$f
+;    .byte   GREEN|$f, BLUE|$f, RED|$f, YELLOW|$f
+  ELSE
+    .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
+  ENDIF
+    .byte   WHITE   ; score display
+    CHECKPAGE PlayerCol
+
+LINE_LUM    = $a
+LineCols
+  IF NTSC_COL
+    .byte   RED|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
+    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
+  ELSE
+    .byte   WHITE|LINE_LUM, CYAN_GREEN|LINE_LUM, PURPLE|LINE_LUM, ORANGE|LINE_LUM
+    .byte   GREEN_YELLOW|LINE_LUM, BLUE_CYAN|LINE_LUM, MAUVE|LINE_LUM, YELLOW|LINE_LUM, WHITE
+  ENDIF
+    CHECKPAGE LineCols
+
     ALIGN_FREE_LBL  256, "ColorTbls (gfx.org.h)"
 
 ColorTbls
