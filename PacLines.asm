@@ -25,11 +25,7 @@
 ;   + Enemy and Bonus?
 ;   ? Player and Enemies when Bonus arrives (player is never over a pellet)
 ;   x ghost color value boost
-; ? pellets, wafers, dots...?
-; ? wider enemies?
-; ? deadly bonuses (mushrooms)
 ; ? support old and new controls
-; ? different font? (Pac-Man)
 
 ; Ideas:
 ; - alternative theme
@@ -43,8 +39,12 @@
 ;   ? abstract
 ;   ? ZPH: Cats, Toys, Treats
 ;   ? ...
-; - countdown with Pac-Man
+; ? pellets, wafers, dots...?
+; ? wider enemies?
+; ? deadly bonuses (mushrooms)
+; x countdown with Pac-Man
 ; x high score screen (787 cycles per line?)
+; ? 16-bit random
 
 ; DONEs:
 ; + difficulty ramp up
@@ -164,6 +164,7 @@
 ; x larger power-up pellet
 ; + debounce uses only 1 bit, saves 6 bytes
 ; + extend score display intervals
+; + different font (Pac-Man)
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -1625,11 +1626,6 @@ TIM_A0S ; 40 (all AI)..102 (all human)
     bcc     .notDeath
 ; 1st or 2nd part?
     tya
-    ldy     playerAI
-    iny
-    beq     .contDeath          ; X == $ff! -> mute sound
-    ldy     #DEATH_VOL
-    sty     AUDV0
     sbc     #DEATH_END1
     bcs     .deathPart1
     ldx     #0
@@ -1650,9 +1646,14 @@ TIM_A0S ; 40 (all AI)..102 (all human)
 ;---------------------------------------
     tay
     txa
+    ldx     playerAI
+    cpx     #$ff
+    beq     .contDeath          ; X == $ff! -> mute sound
     asl
     adc     AudF0Tbl+DEATH_END,y
     tax
+    lda     #DEATH_VOL
+    sta     AUDV0
     lda     #$4
     bne     .contDeath
 

@@ -1,4 +1,4 @@
-    COND_ALIGN_FREE_LBL ENEMY_GFX_LEN, 256, "EnemyGfx (gfx.org.h)"
+    COND_ALIGN_FREE_LBL ENEMY_GFX_LEN, 256, "EnemyGfx (gfx_org.h)"
 
 EnemyGfx
 EnemyGfx0
@@ -262,7 +262,7 @@ LineCols
   ENDIF
     CHECKPAGE LineCols
 
-    ALIGN_FREE_LBL  256, "ColorTbls (gfx.org.h)"
+    ALIGN_FREE_LBL  256, "ColorTbls (gfx_org.h)"
 
 ColorTbls
 EnemyCol0
@@ -501,7 +501,7 @@ AIColMask ; MUST be behind enemy colors!
     ds      GFX_H, $f0|AI_LUM       ; is it OK to cross a page?
     CHECKPAGE ColorTbls
 
-    ALIGN_FREE_LBL 256, "PlayerGfx (gfx.org.h)"
+    ALIGN_FREE_LBL 256, "PlayerGfx (gfx_org.h)"
 
 PlayerGfx
 PlayerGfx0
