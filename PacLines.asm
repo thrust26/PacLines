@@ -15,35 +15,16 @@
 ; ? maybe
 
 ; BUGs:
-; - AI players are not dying completely at end of game
-; - why is extra WSYNC required for Stella?
+; - #6 why is extra WSYNC required for Stella? (Stella bug?)
 
 ; TODOs:
-; o sound
-;   + only human players
-;   o prios:
-;     o channel 0: death (add end sound & gfx?), bonus, waka-waka (alternating "wa" and "ka")
-;     + channel 1: enemy eaten, eyes, scared, siren (pitch based on game speed)
-;   o countdown
-;   x start
-;   x game over sound
-;   + new high score (player sound, 10x ding)
 ; o demo mode
 ;   ? automatic start
-; ? larger power-up pellet
 ; o flicker
 ;   ? all 3 objects
 ;   + Enemy and Bonus?
 ;   ? Player and Enemies when Bonus arrives (player is never over a pellet)
 ;   x ghost color value boost
-; o high score
-;   + score and level
-;   + determine
-;   + play sound for new high score (when reached and was not zero before)
-;   + reset
-;     + when game variation changes
-;     + keep for same variation as high score
-;   o save (PlusROM, SaveKey)
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
 ; ? deadly bonuses (mushrooms)
@@ -124,8 +105,8 @@
 ; + RESET, SELECT
 ; + game variations (2x4)
 ; + game states
-;   + %00, select (before start and at end of game); TODO: level display
-;   + %10, start; TODO: level display
+;   + %00, select (before start and at end of game)
+;   + %10, start
 ;   + %11, running
 ;   + %01, over (all human players killed)
 ; + controls
@@ -151,6 +132,14 @@
 ; + fire after game over should directly start new game (like RESET)
 ; + start with bonus game variations
 ; + display high score during game select
+; + high score
+;   + score and level
+;   + determine
+;   + play sound for new high score (when reached and was not zero before)
+;   + reset
+;     + when game variation changes
+;     + keep for same variation as high score
+;   + save (PlusROM only)
 ; + #3 timer overflows
 ;   + caused by high score display
 ;   + caused by too many player/enemy collisions in the same frame
@@ -160,7 +149,19 @@
 ;   + do not calc from scratch every frame (.maxLevel, firstPlayer)
 ;   + optimize code
 ;   + check timer and abandon early
-; + game starts with line not score
+; + sound
+;   + only human players
+;   + prios:
+;     + channel 0: death, bonus, waka-waka (alternating "wa" and "ka")
+;     + channel 1: enemy eaten, eyes, scared, siren (pitch based on game speed)
+;   + countdown
+;   x start
+;   x game over sound
+;   + new high score (player sound, 10x ding)
+; + #4 game starts with line not score
+; + #5 AI players are not dying completely at end of game
+; x larger power-up pellet
+; + debounce uses only 1 bit, saves 6 bytes
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -187,7 +188,7 @@
 ; A S S E M B L E R - S W I T C H E S
 ;===============================================================================
 
-VERSION         = $0090
+VERSION         = $0091
 BASE_ADR        = $f000     ; 4K
 
   IFNCONST TV_MODE ; manually defined here
@@ -201,13 +202,12 @@ PAL50           = 0 ; not supported!
 ILLEGAL         = 1
 DEBUG           = 1
 
-SAVEKEY         = 0 ; (-~220) support high scores on SaveKey
+SAVEKEY         = 0 ; (-~220) support high scores on SaveKey (too many bytes)
 PLUSROM         = 0 ; (-41)
 COPYRIGHT       = 1 ; (-55/56) add copyright notices into code
 
-RAND16          = 0 ; (-3) 16-bit random values
+RAND16          = 0 ; (-3, -1 RAM) 16-bit random values
 FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
-LARGE_POWER     = 0 ; (+/-0) rectangular power up
 BUTTON_DIR      = 1 ; (+6, +1 RAM) button press directly determines direction
 KILL_AI         = 1 ; (-4) enemies can kill AI players
 BIG_MOUTH       = 1 ; (0) bigger mouth for player
@@ -233,7 +233,7 @@ AI_LUM          = 4
 ; G A M E - C O N S T A N T S
 ;===============================================================================
 
-EOR_RND         = $bd           ; %10110100 ($9c, $b4, $bd, $ca, $eb, $fc)
+EOR_RND         = $bd               ; %10110100 ($9c, $b4, $bd, $ca, $eb, $fc)
 
 SCW             = 160
 PELLET_H        = 2
@@ -241,11 +241,11 @@ POWER_H         = 6
 SPRITE_W        = 8
 
 NUM_PLAYERS     = 8
-NUM_VARIATIONS  = 8         ; TODO
+NUM_VARIATIONS  = 8                 ; TODO (8|4... saves 7 bytes)
 
 POWER_TIM       = 140
 
-NUM_BONUS       = 8
+NUM_BONUS       = 8                 ; enough for 32 levels
 X_BONUS_OFF     = $ff
 BONUS_SHIFT     = 2                 ; 2 = every 4th level
 BONUS_MASK      = (1<<BONUS_SHIFT)-1
@@ -336,7 +336,7 @@ playerSpeed     .byte
 playerSpeedSum  .byte
 enemySpeed      .byte
 enemySpeedSum   .byte
-bonusSpeed      = enemySpeed        ; TODO: eliminate if bonus speed is always 50% of enemy speed
+bonusSpeed      = enemySpeed
 bonusSpeedSum   .byte
 maxLevel        .byte               ; permanent value instead of calculated from scratch
 firstPlayer     .byte               ; used if Get1stPlayerScore takes too long
@@ -658,11 +658,7 @@ DrawScreen SUBROUTINE
     sty     GRP1                ; 3
     ldx     #$ff                ; 2
     txs                         ; 2
-  IF LARGE_POWER
-    lda     #%100000            ; 2
-  ELSE
     lda     #%010000            ; 2
-  ENDIF
     sta     CTRLPF              ; 3 = 20
 ;---------------------------------------------------------------
 .loopCnt    = tmpVars
@@ -1274,11 +1270,7 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
 ; check if power-up got eaten:
     lda     xPowerLst,x
     sec
-  IF LARGE_POWER
-    sbc     #6-1
-  ELSE
     sbc     #6
-  ENDIF
     lsr
     lsr
     lsr
@@ -1445,6 +1437,9 @@ DEBUG2
     ldy     powerTimLst,x   ; power-up enabled?
     bne     .killEnemy      ;  yes, kill enemy
 ; kill player:
+    ldy     playerAI
+    iny                     ; demo mode?
+    beq     .doDeathSound   ; enable counter in audIdx0 in demo mode (for complete death animation of last AI player)
     and     playerAI
   IF !KILL_AI
     bne     .skipCXSpriteJmp
@@ -1452,12 +1447,11 @@ DEBUG2
     bne     .skipKillSound
   ENDIF
 ; player death sound and animation:
+.doDeathSound
     lda     #DEATH_START
     sta     audIdx0
-    lda     #DEATH_VOL
-    sta     AUDV0
 .skipKillSound
-    lda     #(NUM_DEATH_PTR << 3) - 1   ; start death animation
+    lda     #(NUM_DEATH_PTR << 3) - 2   ; start death animation (1 shorter to always finish death animation)
     sta     powerTimLst,x
 ; disable player:
     lda     Pot2Bit,x
@@ -1466,7 +1460,6 @@ DEBUG2
     bne     .skipCXSpriteJmp
 
 .killEnemy
-;    lda     Pot2Bit,x
     ora     enemyEyes        ; -> eyes
     sta     enemyEyes
     lda     playerAI
@@ -1593,45 +1586,6 @@ DEBUG2
     sty     audIdx1
 .skipGameRunning
 ; 2133 cyles for loop
-
-;; *** Player sounds ***
-;TIM_A0S ; 40 (all AI)..102 (all human)
-;    ldy     audIdx0
-;    cpy     #DEATH_END
-;    bcc     .notDeath
-;    tya
-;    sbc     #DEATH_END
-;    ldx     #6*2            ; number repeats * 2
-;.loopDeath
-;    dex
-;    dex
-;    sbc     #DEATH_LEN      ; repeated sequence length
-;    bcs     .loopDeath
-;    tay
-;    txa
-;    adc     AudF0Tbl+DEATH_END-$100+DEATH_LEN,y
-;    tax
-;    bcc     .contDeath
-;    DEBUG_BRK
-;
-;.notDeath
-;    ldx     AudF0Tbl,y           ; varies
-;    beq     .stopSound0
-;.contDeath
-;    lda     #$c
-;    sta     AUDC0
-;    dec     audIdx0
-;    stx     AUDF0
-;    inx
-;    beq     .muteSound0
-;    cpy     #BONUS_END
-;    bcs     .endSound0
-;    ldx     #WAKA_VOL
-;.muteSound0
-;.stopSound0
-;    stx     AUDV0
-;.endSound0
-;TIM_A0E
 TIM_OE
 
 .waitTim
@@ -1659,6 +1613,11 @@ TIM_A0S ; 40 (all AI)..102 (all human)
     bcc     .notDeath
 ; 1st or 2nd part?
     tya
+    ldy     playerAI
+    iny
+    beq     .contDeath          ; X == $ff! -> mute sound
+    ldy     #DEATH_VOL
+    sty     AUDV0
     sbc     #DEATH_END1
     bcs     .deathPart1
     ldx     #0
@@ -1713,7 +1672,7 @@ TIM_A0E
   ELSE
     ldy     #77
   ENDIF
-    ldx     #0
+    ldx     #$80
     lda     SWCHB
     and     #%11
     cmp     #%11
@@ -1728,8 +1687,9 @@ TIM_VS                          ; ~2383 cycles (all AI players) 2383
     lsr                         ; put RESET bit into carry
     lda     debounce            ; DEBOUNCE?
     bmi     .skipSwitches
-    ora     #DEBOUNCE
-    sta     debounce
+;    ora     #DEBOUNCE
+;    sta     debounce
+    stx     debounce            ; = $80
 .buttonReset
     php                         ; remember RESET bit
     jsr     GameInit
@@ -1747,6 +1707,10 @@ TIM_VS                          ; ~2383 cycles (all AI players) 2383
     plp                         ; restore RESET bit
     bcc     .contReset
 ; handle SELECT switch:
+  IF NUM_VARIATIONS = 8 | NUM_VARIATIONS = 4
+    adc     #1-1
+    and     #VAR_MASK           ; increase game variation
+  ELSE ;{
     and     #VAR_MASK           ; increase game variation
     tay
     iny
@@ -1755,6 +1719,7 @@ TIM_VS                          ; ~2383 cycles (all AI players) 2383
     ldy     #0
 .skipResetVar
     tya
+  ENDIF ;}
     eor     gameState
     and     #VAR_MASK
     eor     gameState
@@ -1763,9 +1728,10 @@ TIM_VS                          ; ~2383 cycles (all AI players) 2383
     DEBUG_BRK
 
 .notSwitched
-    lda     debounce
-    and     #~DEBOUNCE
-    sta     debounce
+;    lda     debounce
+;    and     #~DEBOUNCE
+;    sta     debounce
+    asl     debounce            ; $80 -> $00
 .skipSwitches
     bit     gameState
     bpl     .selectOverMode     ; GAME_OVER|GAME_SELECT
@@ -2038,16 +2004,16 @@ TIM_SPE
 ; check for game over:
 ; (let game continue until end of death sound)
     lda     powerTimLst,x       ; player dead?
-    beq     .checkDone          ;  yes, check only
+    beq     .skipAnim           ;  yes, skip further animation
     dec     powerTimLst,x
-.checkDone
+.skipAnim
     lda     audIdx0
-    cmp     #DEATH_END          ; other (human) player still dying? TODO: AI player in demo mode?
-    bcc     .noneDying          ;  nope, check if all dead
+    cmp     #DEATH_END          ; other (human) player still dying?
+    bcc     .doneDying          ;  nope, check if all dead
 .nextMoveJmp
     jmp     .nextMove
 
-.noneDying
+.doneDying
     lda     playerDone
   IF KILL_AI
     ldy     playerAI
@@ -2105,6 +2071,8 @@ TIM_SPE
     bpl     .loopSendHiScore
     stx     frameCnt
     COMMIT_PLUSROM_SEND
+  ELSE
+    ds      39-2, $ea
   ENDIF
 .skipHiScore
     lda     gameState
@@ -2358,7 +2326,7 @@ PrepareDisplay SUBROUTINE
 ;   - high score
 ; - GAME_SELECT
 ;   - start level and bonus
-;   - TODO: high score (if saved)
+;   - high score (if saved)
 ; - GAME_START
 ;   - count down
 
@@ -2773,11 +2741,7 @@ SetupPowerPellets SUBROUTINE
 .left
 ; @pellet 0..7, 12..19
 ;    clc
-  IF LARGE_POWER
-    adc     #6-1
-  ELSE
     adc     #6
-  ENDIF
     sta     xPowerLst,x
 SetupPellets
     lda     #$f5
@@ -2986,21 +2950,12 @@ Letter_N
 PowerChar
     .byte   %00000000
     .byte   %00000000
-  IF LARGE_POWER
-    .byte   %00011000
-    .byte   %00111100
-    .byte   %00111100
-    .byte   %00111100
-    .byte   %00111100
-    .byte   %00011000
-  ELSE
     .byte   %00011000
     .byte   %00011000
     .byte   %00111100
     .byte   %00111100
     .byte   %00011000
     .byte   %00011000
-  ENDIF
 ;    .byte   %00000000
 ;    .byte   %00000000
 PelletChar
