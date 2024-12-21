@@ -29,6 +29,7 @@
 ; ? wider enemies?
 ; ? deadly bonuses (mushrooms)
 ; ? support old and new controls
+; ? different font? (Pac-Man)
 
 ; Ideas:
 ; - alternative theme
@@ -162,6 +163,7 @@
 ; + #5 AI players are not dying completely at end of game
 ; x larger power-up pellet
 ; + debounce uses only 1 bit, saves 6 bytes
+; + extend score display intervals
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -270,6 +272,8 @@ MAX_PL_SPEED    = (MAX_EN_SPEED * 100 + DELTA_SPEED / 2) / DELTA_SPEED  ; reache
 PELLET_PTS      = 1
 POWER_PTS       = 5
 ENEMY_PTS       = 10
+
+SCORE_TIM       = FPS * 3 / 2
 
 ; gameState constants:
 DIFF_MASK       = $03       ; game variation
@@ -570,35 +574,43 @@ PLUSROM_ID  = 84                ;           Pac-Line x 8 game id in Highscore DB
 
 COPYRIGHT_LEN SET 0
 
-PfOffset
-    ds      2, pf01LeftLst   - pfLst
-    ds      4, pf01LeftLst   - pfLst
-    ds      4, pf20MiddleLst - pfLst
-    ds      2, pf20MiddleLst - pfLst
-    ds      4, pf12RightLst  - pfLst
-    ds      4, pf12RightLst  - pfLst
+;---------------------------------------------------------------
+GameInit SUBROUTINE
+;---------------------------------------------------------------
+    ldx     #NUM_RESETS-1
+    lda     #0
+.loopReset
+    sta     resetLst,x
+    dex
+    bpl     .loopReset
 
-PfMask
-    .byte   %11011111, %01111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
-    .byte   %11101111, %10111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
+    sta     AUDV0
+    sta     AUDV1
+    stx     frameCnt        ; required for alternating from scratch in select mode
 
-ScoreLums
-; highlighted:
-    .byte   $f8
-    .byte   $f8
-    .byte   $f8
-    .byte   $fa
-    .byte   $fc
-    .byte   $fe
-    .byte   $fe
-    .byte   $fc
-    .byte   $fa
-    .byte   $f8
-    CHECKPAGE ScoreLums
+; setup initial board:
+    ldx     #NUM_PLAYERS-1
+.loopPf
+    jsr     SetupPowerPellets
+  IF BIG_MOUTH = 0
+    lda     #SCW*1/2-16     ; at right of left power-ups
+  ELSE
+    lda     #SCW*1/2-16-1   ; at right of left power-ups
+  ENDIF
+    sta     xPlayerLst,x
+    lda     #SCW-8-1        ; right border-1
+    sta     xEnemyLst,x
+    lda     #X_BONUS_OFF    ; no bonus
+    sta     xBonusLst,x
+    lda     #1
+    sta     levelLst,x
+    dex
+    bpl     .loopPf
+
+    stx     VDELP0
+    stx     VDELBL
+    rts
+; /GameInit
 
 ;    ds  10, 0   ; line kernel alignment (tight contraints!)
 
@@ -2361,9 +2373,9 @@ PrepareDisplay SUBROUTINE
     jmp     .startRunningMode       ; GAME_START|GAME_RUNNING
 
 .notRunningMode
-    lda     frameCnt
-    bpl     .contFrameCnt
-    lda     #FPS*2
+    lda     #SCORE_TIM*2
+    cmp     frameCnt
+    bcs     .contFrameCnt
     sta     frameCnt
 .contFrameCnt
     bvc     .selectMode             ; GAME_SELECT
@@ -2389,7 +2401,7 @@ PrepareDisplay SUBROUTINE
 ; check timer and update game state counter:
     ldx     playerIdx
     lda     frameCnt
-    cmp     #FPS*2
+    cmp     #SCORE_TIM*2
     bne     .sameRank
     lsr     waitedOver
     dex
@@ -2425,7 +2437,7 @@ PrepareDisplay SUBROUTINE
     sbc     playerIdx
     sta     .char0              ; displayed rank - 1
     inc     .char0
-    lda     #FPS
+    lda     #SCORE_TIM
     cmp     frameCnt
     bcs     .displayRankLevel
     ldy     #ID_DOT
@@ -2433,7 +2445,7 @@ PrepareDisplay SUBROUTINE
     bcc     .contGameOver
 
 .highScore
-    lda     #FPS
+    lda     #SCORE_TIM
     cmp     frameCnt
 .displayHighScore
     ldx     #NUM_PLAYERS
@@ -2459,7 +2471,7 @@ PrepareDisplay SUBROUTINE
     and     #VAR_MASK           ; high score for current game variation?
     bne     .skipShowHiScore    ;  no, do not show high score
     lda     frameCnt
-    cmp     #FPS                ; 2nd half of display cycle?
+    cmp     #SCORE_TIM          ; 2nd half of display cycle?
     bcc     .displayHighScore   ;  yes, show high score
 .skipShowHiScore
     ldy     #ID_BLANK
@@ -2641,44 +2653,6 @@ TIM_GNPDE
 ; /Get1stPlayerScore
 
 ;---------------------------------------------------------------
-GameInit SUBROUTINE
-;---------------------------------------------------------------
-    ldx     #NUM_RESETS-1
-    lda     #0
-.loopReset
-    sta     resetLst,x
-    dex
-    bpl     .loopReset
-
-    sta     AUDV0
-    sta     AUDV1
-    stx     frameCnt        ; required for alternating from scratch in select mode
-
-; setup initial board:
-    ldx     #NUM_PLAYERS-1
-.loopPf
-    jsr     SetupPowerPellets
-  IF BIG_MOUTH = 0
-    lda     #SCW*1/2-16     ; at right of left power-ups
-  ELSE
-    lda     #SCW*1/2-16-1   ; at right of left power-ups
-  ENDIF
-    sta     xPlayerLst,x
-    lda     #SCW-8-1        ; right border-1
-    sta     xEnemyLst,x
-    lda     #X_BONUS_OFF    ; no bonus
-    sta     xBonusLst,x
-    lda     #1
-    sta     levelLst,x
-    dex
-    bpl     .loopPf
-
-    stx     VDELP0
-    stx     VDELBL
-    rts
-; /GameInit
-
-;---------------------------------------------------------------
 AddScoreLo SUBROUTINE
 ;---------------------------------------------------------------
     ldy     #0
@@ -2752,24 +2726,18 @@ SetupPellets
     sta     pf12RightLst,x
     rts
 
-;---------------------------------------------------------------
-NextRandom SUBROUTINE
-;---------------------------------------------------------------
-    lda     randomLo        ; 3
-    lsr                     ; 2
-  IF RAND16 ;{
-    rol     randomHi        ; 5
-  ENDIF ;}
-    bcc     .skipEor        ; 2/3
-    eor     #EOR_RND        ; 2
-.skipEor
-    sta     randomLo        ; 3 = 16/17
-  IF RAND16 ;{
-    eor     randomHi        ; 3 = 19/20
-  ENDIF ;}
-    rts
-; /NextRandom
-
+CopyRight
+  IF COPYRIGHT
+    .byte   " Pac-Line x 8 - V"
+    VERSION_STR
+   IF NTSC_COL
+    .byte   " (NTSC)"
+   ELSE
+    .byte   " (PAL60)"
+   ENDIF
+    .byte   " - (C)2024 Thomas Jentzsch "
+  ENDIF
+COPYRIGHT_LEN SET . - CopyRight
 
 ;===============================================================================
 ; R O M - T A B L E S (Bank 0)
@@ -2777,220 +2745,8 @@ NextRandom SUBROUTINE
 
     COND_ALIGN_FREE_LBL DIGIT_GFX_LEN, 256, "DigitGfx"
 
-DigitGfx ; font is "Level-Up"
-Four
-    .byte   %00001100
-    .byte   %00001100
-    .byte   %11111110
-    .byte   %11111110
-    .byte   %11001100
-    .byte   %11101100
-    .byte   %01101100
-    .byte   %01111100
-    .byte   %00111100
-    .byte   %00111100
-FONT_H = . - Four
-
-Seven
-    .byte   %01110000
-    .byte   %01110000
-    .byte   %01110000
-    .byte   %01110000
-    .byte   %01111000
-    .byte   %00111100
-    .byte   %00011110
-    .byte   %00001110
-;    .byte   %01111111
-;    .byte   %01111111
-Two
-    .byte   %11111110
-    .byte   %11111110
-    .byte   %11110000
-    .byte   %01111000
-    .byte   %00111100
-    .byte   %00011110
-    .byte   %00001110
-    .byte   %11001110
-    .byte   %11111110
-;    .byte   %00111110
-Six
-    .byte   %01111100
-    .byte   %11111110
-    .byte   %11100110
-    .byte   %11100110
-    .byte   %11111110
-    .byte   %11111100
-    .byte   %11100000
-    .byte   %11100110
-    .byte   %11111110
-;    .byte   %00111110
-Three
-    .byte   %01111100
-    .byte   %11111110
-    .byte   %11001110
-    .byte   %00001110
-    .byte   %00111100
-    .byte   %00111100
-    .byte   %00001110
-    .byte   %11001110
-    .byte   %11111110
-;    .byte   %00111110
-Nine
-    .byte   %01111100
-    .byte   %11111110
-    .byte   %11001110
-    .byte   %00001110
-    .byte   %01111110
-    .byte   %11111110
-    .byte   %11001110
-    .byte   %11001110
-    .byte   %11111110
-;    .byte   %00111110
-Eight
-    .byte   %01111100
-    .byte   %11111110
-    .byte   %11001110
-    .byte   %11001110
-    .byte   %01111100
-    .byte   %01111100
-    .byte   %11001110
-    .byte   %11001110
-    .byte   %11111110
-;    .byte   %00111110
-Zero
-    .byte   %01111100
-    .byte   %11111110
-    .byte   %11000110
-    .byte   %11000110
-    .byte   %11010110
-    .byte   %11010110
-    .byte   %11000110
-    .byte   %11000110
-    .byte   %11111110
-;    .byte   %00111110
-Five
-    .byte   %01111100
-    .byte   %11111110
-    .byte   %11001110
-    .byte   %00001110
-    .byte   %01111110
-    .byte   %11111100
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11111110
-    .byte   %11111110
-
-One
-    .byte   %00011000
-    .byte   %00011000
-    .byte   %00011000
-    .byte   %00011000
-    .byte   %00011000
-    .byte   %00011000
-    .byte   %00011000
-    .byte   %01111000
-    .byte   %01111000
-    .byte   %00111000
-
-Letter_L
-    .byte   %11111011
-    .byte   %11111011
-    .byte   %11000011
-    .byte   %11000011
-    .byte   %11000011
-    .byte   %11000011
-    .byte   %11000011
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-Letter_I
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %11000000
-    .byte   %00000000
-    .byte   %11000000
-    .byte   %11000000
-Letter_H
-    .byte   %01100110
-    .byte   %01100110
-    .byte   %01100110
-    .byte   %01100110
-    .byte   %01111110
-    .byte   %01111110
-    .byte   %01100110
-    .byte   %01100110
-    .byte   %01100110
-    .byte   %01100110
-BonusGfx
-    .byte   %00000100
-    .byte   %01001010
-    .byte   %10101110
-    .byte   %11101110
-    .byte   %11100100
-    .byte   %01000000
-    .byte   %00000100
-    .byte   %00110110
-    .byte   %00011010
-    .byte   %00000110
-Letter_N
-    .byte   %01101100
-    .byte   %01101100
-    .byte   %01100000
-    .byte   %01100000
-    .byte   %01100000
-    .byte   %11100000
-    .byte   %11000000
-    .byte   %00000000
-;    .byte   %00000000
-;    .byte   %00000000
-PowerChar
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00011000
-    .byte   %00011000
-    .byte   %00111100
-    .byte   %00111100
-    .byte   %00011000
-    .byte   %00011000
-;    .byte   %00000000
-;    .byte   %00000000
-PelletChar
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00111100
-    .byte   %00111100
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-DotChar
-    .byte   %11000000
-    .byte   %11000000
-;    .byte   %00000000
-;    .byte   %00000000
-;    .byte   %00000000
-;    .byte   %00000000
-;    .byte   %00000000
-;    .byte   %00000000
-;    .byte   %00000000
-;    .byte   %00000000
-Blank
-    ds      GFX_H - (GFX_H-POWER_H)/2, 0
-EnaBlTbl                ; can be overlapped with PearGfx
-    ds      (GFX_H-POWER_H)/2, 0
-;    ds      1, %10
-;    ds      4, 0
-;    ds      1, %10
-    ds      POWER_H, %10
-    ds      (GFX_H-POWER_H)/2, 0
-DIGIT_GFX_LEN = . - DigitGfx
-    CHECKPAGE_DATA_LBL DigitGfx, "DigitGfx"
+;    include     Font_Levelup.inc
+    include     Font_PacMan.inc
 
   IF PLUSROM
 PlusROM_API
@@ -3257,18 +3013,53 @@ DING_LEN    = . - DingVolTbl
 SHORT_DING_LEN    = . - ShortDingVol
   ENDIF
 
-CopyRight
-  IF COPYRIGHT
-    .byte   " Pac-Line x 8 - V"
-    VERSION_STR
-   IF NTSC_COL
-    .byte   " (NTSC)"
-   ELSE
-    .byte   " (PAL60)"
-   ENDIF
-    .byte   " - (C)2024 Thomas Jentzsch "
-  ENDIF
-COPYRIGHT_LEN SET . - CopyRight
+;---------------------------------------------------------------
+NextRandom SUBROUTINE
+;---------------------------------------------------------------
+    lda     randomLo        ; 3
+    lsr                     ; 2
+  IF RAND16 ;{
+    rol     randomHi        ; 5
+  ENDIF ;}
+    bcc     .skipEor        ; 2/3
+    eor     #EOR_RND        ; 2
+.skipEor
+    sta     randomLo        ; 3 = 16/17
+  IF RAND16 ;{
+    eor     randomHi        ; 3 = 19/20
+  ENDIF ;}
+    rts
+; /NextRandom
+
+PfOffset
+    ds      2, pf01LeftLst   - pfLst        ; = 0
+    ds      4, pf01LeftLst   - pfLst        ; = 0
+    ds      4, pf20MiddleLst - pfLst        ; = 4
+    ds      2, pf20MiddleLst - pfLst        ; = 4
+    ds      4, pf12RightLst  - pfLst        ; = 8
+    ds      4, pf12RightLst  - pfLst        ; = 8
+
+PfMask
+    .byte   %11011111, %01111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+    .byte   %11101111, %10111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+
+ScoreLums
+; highlighted:
+    .byte   $f8
+    .byte   $f8
+    .byte   $f8
+    .byte   $fa
+    .byte   $fc
+    .byte   $fe
+    .byte   $fe
+    .byte   $fc
+    .byte   $fa
+    .byte   $f8
+    CHECKPAGE ScoreLums
 
   IF !PLUSROM
     .byte   "QUADTARI"
