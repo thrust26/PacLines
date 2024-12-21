@@ -25,7 +25,6 @@
 ;   + Enemy and Bonus?
 ;   ? Player and Enemies when Bonus arrives (player is never over a pellet)
 ;   x ghost color value boost
-; ? support old and new controls
 
 ; Ideas:
 ; - alternative theme
@@ -165,6 +164,8 @@
 ; + debounce uses only 1 bit, saves 6 bytes
 ; + extend score display intervals
 ; + different font (Pac-Man)
+; + fire buttun aborts demo and resets game
+; + support old and new controls (left difficulty)
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -203,15 +204,17 @@ PAL50           = 0 ; not supported!
     include tv_modes.h
 
 ILLEGAL         = 1
-DEBUG           = 1
+DEBUG           = 0
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey (too many bytes)
-PLUSROM         = 0 ; (-41)
+PLUSROM         = 1 ; (-41)
 COPYRIGHT       = 1 ; (-55/56) add copyright notices into code
 
 RAND16          = 0 ; (-3, -1 RAM) 16-bit random values
 FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
-BUTTON_DIR      = 1 ; (+6, +1 RAM) button press directly determines direction
+SWITCH_DIR      = 1 ; (-28, -1 RAM)
+BUTTON_DIR      = 1 ; (-4) button press directly determines direction
+                    ; (-5, if both enabled
 KILL_AI         = 1 ; (-4) enemies can kill AI players
 BIG_MOUTH       = 1 ; (0) bigger mouth for player
 HISCORE_DING    = 1 ; (-99) 10 dings at new high score
@@ -353,7 +356,7 @@ ignoredScores   = enemySpeedSum     ; IIIIIIII  reused for displaying alternatin
 nxtIgnoredScores= bonusSpeedSum
 ;---------------------------------------
 ; row bits:
-  IF !BUTTON_DIR
+  IF SWITCH_DIR
 buttonBits      .byte               ; 1 = pressed
   ENDIF
 playerLeft      .byte               ; 1 = left, 0 = right
@@ -1408,7 +1411,6 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     lda     #X_BONUS_OFF
     sta     xBonusLst,x
 ; play bonus eaten sound:
-DEBUG2
     lda     playerAI
     and     Pot2Bit,x
     bne     .skipBonusSound
@@ -2085,7 +2087,7 @@ TIM_SPE
     stx     frameCnt
     COMMIT_PLUSROM_SEND
   ELSE
-    ds      39-2, $ea
+    ds      39-2-16, $ea
   ENDIF
 .skipHiScore
     lda     gameState
@@ -2217,40 +2219,48 @@ TIM_SPE
 ;---------------------------------------------------------------
 ; *** update player directions ***
 ; check buttons:
-    lda     playerAI
-    and     Pot2Bit,x
-    bne     .aiPlayer
-  IF !BUTTON_DIR ;{
-    lda     SWCHA
-    and     ButtonBit,x
-    bne     .skipPressed
-    lda     Pot2Bit,x
-    bit     buttonBits
-    bne     .skipReverseDir
-; reverse direction
-    lda     playerLeft
-    eor     Pot2Bit,x
-    sta     playerLeft
-    lda     buttonBits
-    ora     Pot2Bit,x           ; set button bit
-    bne     .setBits
-
-.skipPressed
-    lda     buttonBits
-    and     Pot2Mask,x          ; clear button bit
-.setBits
-    sta     buttonBits
-.skipReverseDir
-    jmp     .skipAI
-  ELSE ;}
     lda     SWCHA
     and     ButtonBit,x
     cmp     #1
+    lda     playerAI
+    tay
+    and     Pot2Bit,x
+    bne     .aiPlayer
+  IF SWITCH_DIR & BUTTON_DIR
+    bit     SWCHB
+    bvc     .buttonDir
+  ENDIF
+  IF SWITCH_DIR ;
+    lda     buttonBits
+    and     Pot2Mask,x          ; clear button bit
+    bcs     .setButtonBits      ; not pressed, set cleared bit
+    cmp     buttonBits          ; bit set before?
+    bne     .skipReverseDir     ;  yes, skip reversing
+    lda     Pot2Bit,x
+    eor     playerLeft
+    sta     playerLeft
+    lda     buttonBits
+    ora     Pot2Bit,x           ; set button bit
+.setButtonBits
+    sta     buttonBits
+.skipReverseDir
+    jmp     .skipAI
+  ENDIF
+  IF BUTTON_DIR
+.buttonDir
     bcs     .moveRight
     bcc     .moveLeft
   ENDIF
 
 .aiPlayer
+    bcs     .contAI
+; button of AI player pressed:
+    iny                         ; demo mode?
+    bne     .contAI             ;  no, continue with AI
+    jmp     .buttonReset        ;  yes, reset game
+
+.contAI
+
 ; only ~2 random AI players/frame:
     txa
     eor     randomLo
@@ -2729,14 +2739,15 @@ SetupPellets
 
 CopyRight
   IF COPYRIGHT
-    .byte   " Pac-Line x 8 - V"
-    VERSION_STR
+    .byte   "Pac-Line x 8"
+;    .byte    "V"
+;    VERSION_STR
    IF NTSC_COL
-    .byte   " (NTSC)"
+    .byte   "(NTSC)"
    ELSE
-    .byte   " (PAL60)"
+    .byte   "(PAL60)"
    ENDIF
-    .byte   " - (C)2024 Thomas Jentzsch "
+    .byte   " (C)2024 Th.Jentzsch"
   ENDIF
 COPYRIGHT_LEN SET . - CopyRight
 
@@ -2749,21 +2760,23 @@ COPYRIGHT_LEN SET . - CopyRight
 ;    include     Font_Levelup.inc
     include     Font_PacMan.inc
 
-  IF PLUSROM
-PlusROM_API
-    .byte "a", 0, "h.firmaplus.de", 0
-  ENDIF
-
 HMoveTbl
 ; this is calculated with 1 cycle extra on access
 ; it MUST NOT be at the END of a page
     .byte   $60, $50, $40, $30, $20, $10, $00
     .byte   $f0, $e0, $d0, $c0, $b0, $a0, $90, $80
-  IF <HMoveTbl >= $f1
+  IF (PASS > 1) & (<HMoveTbl >= $f1)
     ECHO ""
     ECHO "HMoveTbl aligned wrong!"
     ECHO ""
     ERR
+  ENDIF
+
+  IF PLUSROM
+PlusROM_API
+    .byte   "a", 0, "h.firmaplus.de", 0
+  ELSE
+    ds      16, 0
   ENDIF
 
   IF THEME_ORG
@@ -3074,10 +3087,10 @@ COPYRIGHT_LEN SET COPYRIGHT_LEN + 3
     ORG_FREE_LBL BASE_ADR + $ff0-1, "PlusROM Hotspots" ; next 4 bytes must not be accessed!
 
     .byte   "QUADTARI"
-  IF COPYRIGHT
+;  IF COPYRIGHT
     .byte   "JTZ"
-COPYRIGHT_LEN SET COPYRIGHT_LEN + 3
-  ENDIF
+;COPYRIGHT_LEN SET COPYRIGHT_LEN + 3
+;  ENDIF
 
     ORG_FREE_LBL BASE_ADR + $ffa, "Vectors"
     .word PlusROM_API - BASE_ADR + $1000 ; must be $1xxx!
