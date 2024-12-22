@@ -166,6 +166,8 @@
 ; + different font (Pac-Man)
 ; + fire buttun aborts demo and resets game
 ; + support old and new controls (left difficulty)
+; + demo mode repeating after score loop
+; + sound in demo mode
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -221,6 +223,7 @@ HISCORE_DING    = 1 ; (-99) 10 dings at new high score
 EXTEND_COUNTDOWN= 1 ; (-12) extends countdown with each new activated player
 LONG_DEATH      = 1 ; (-??) 0 is still TODO
 LIMIT_LEVEL     = 0 ; (-9) limit level to 100 (doubtful that this can ever be reached)
+DEMO_SOUND      = 1 ; (-15) play sounds during demo mode
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -1304,12 +1307,21 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     lda     #PELLET_PTS     ; = 1
     jsr     AddScoreLo
     lda     playerAI        ; only human players make sound
+  IF DEMO_SOUND
+    cmp     #$ff
+    beq     .demoWakaSound
+  ENDIF
     and     Pot2Bit,x
     bne     .skipWaka
+.demoWakaSound
 ; Waka-Waka alternates between WAKA und KAWA sounds:
     lda     audIdx0
     cmp     #BONUS_END-1    ; other sound playing?
     bcc     .updataWaka     ;  no, updata waka
+  IF DEMO_SOUND
+    cmp     #DEATH_END      ; death sound? (ranges behind sound data and might be 0)
+    bcs     .skipWaka       ;  yes, skip waka
+  ENDIF
     tay
     lda     AudF0Tbl,y      ; other sound at end?
     bne     .skipWaka       ;  yes, skip waka, else start with 0
@@ -1420,8 +1432,13 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     sta     xBonusLst,x
 ; play bonus eaten sound:
     lda     playerAI
+  IF DEMO_SOUND
+    cmp     #$ff
+    beq     .demoBonusSound
+  ENDIF
     and     Pot2Bit,x
     bne     .skipBonusSound
+.demoBonusSound
     lda     audIdx0
     cmp     #DEATH_END
     bcs     .skipBonusSound
@@ -1486,8 +1503,13 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     ora     enemyEyes        ; -> eyes
     sta     enemyEyes
     lda     playerAI
+  IF DEMO_SOUND
+    cmp     #$ff
+    beq     .demoEatenSound
+  ENDIF
     and     Pot2Bit,x
     bne     .skipEatenSound
+.demoEatenSound
     lda     #EATEN_START
     sta     audIdx1
     lda     #$c
@@ -1550,8 +1572,15 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     cpy     #EYES_END           ; eaten or eyes sound playing?
     bcs     .contEnemySound     ;  yes, continue current sound
 ; enemy eyes?
+    lda     playerAI
+  IF DEMO_SOUND
+    tax
+    inx                         ; demo mode?
+    bne     .notDemoEyes        ;  no, ignore AI and dead players
+    txa                         ;  yes, ignore only dead players
+.notDemoEyes
+  ENDIF
     ldx     #EYES_IDX
-    lda     playerAI            ; ignore AI and dead players
     ora     playerDone
     eor     #$ff
     and     enemyEyes
@@ -1561,7 +1590,13 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     bcs     .contEnemySound     ;  yes, continue current sound
     ldx     #NUM_PLAYERS-1
 .loopPowerTim
-    lda     playerAI            ; ignore enemy lines &
+    lda     playerAI
+  IF DEMO_SOUND
+    cmp     #$ff                ; demo mode?
+    bne     .notDemoScared      ;  no, ignore AI and dead players
+    lda     #0                  ;  yes, ignore only dead players
+.notDemoScared
+  ENDIF
     ora     playerDone          ;  no scared audio if powerTimLst,x is currently used for death animation
     and     Pot2Bit,x
     bne     .nextPlayer
@@ -1574,9 +1609,11 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     dex
     bpl     .loopPowerTim
 ; siren sound?
+  IF !DEMO_SOUND
     lda     playerAI            ; ignore AI lines
     cmp     #$ff                ; demo mode?
     beq     .stopSound1         ;  yes, no sound
+  ENDIF
     cpy     #SIREN_END          ; siren sound playing?
     bcs     .contEnemySound     ;  yes, continue current sound
     ldx     #SIREN_IDX
@@ -1656,9 +1693,11 @@ TIM_A0S ; 40 (all AI)..102 (all human)
 ;---------------------------------------
     tay
     txa
+  IF !DEMO_SOUND
     ldx     playerAI
     cpx     #$ff
     beq     .contDeath          ; X == $ff! -> mute sound
+  ENDIF
     asl
     adc     AudF0Tbl+DEATH_END,y
     tax
@@ -1713,7 +1752,7 @@ TIM_VS                          ; ~2383 cycles (all AI players) 2383
 ;    ora     #DEBOUNCE
 ;    sta     debounce
     stx     debounce            ; = $80
-.buttonReset
+ButtonReset
     php                         ; remember RESET bit
     jsr     GameInit
     lax     gameState
@@ -1800,7 +1839,7 @@ TIM_VS                          ; ~2383 cycles (all AI players) 2383
 ContInitCart                    ; enters with CF=1
     eor     #GAME_OVER
     sta     gameState
-    jmp     .buttonReset
+    jmp     ButtonReset
 
 .skipRunningJmp
     jmp     .skipRunning
@@ -2265,7 +2304,7 @@ TIM_SPE
 ; button of AI player pressed:
     iny                         ; demo mode?
     bne     .contAI             ;  no, continue with AI
-    jmp     .buttonReset        ;  yes, reset game
+    jmp     ButtonReset         ;  yes, reset game
 
 .contAI
 
@@ -2422,13 +2461,19 @@ PrepareDisplay SUBROUTINE
     lda     frameCnt
     cmp     #SCORE_TIM*2
     bne     .sameRank
-    lsr     waitedOver
     dex
     bpl     .skipReset
+    lsr     waitedOver          ; one whole score loop done
     lda     playerAI
-    cmp     #$ff                ; demo mode?
-    bcc     .notDemoMode
-    lda     #0
+    tay
+    iny                         ; demo mode?
+    bne     .notDemoMode        ;  no, show only human scores
+    bcc     .notLooped          ; first loop, continue
+    clc                         ; full score loop in demo mode
+    jmp     ButtonReset         ;  reset
+
+.notLooped
+    tya                         ; demo mode, show all scores (Y = 0)
 .notDemoMode
     sta     nxtIgnoredScores
     ldx     .countHuman
@@ -2768,9 +2813,9 @@ CopyRight
 ;    .byte    "V"
 ;    VERSION_STR
    IF NTSC_COL
-    .byte   "(NTSC)"
+    .byte   " NTSC"
    ELSE
-    .byte   "(PAL60)"
+    .byte   " PAL60"
    ENDIF
     .byte   " (C)2024 Th.Jentzsch"
   ENDIF
