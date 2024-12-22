@@ -218,7 +218,7 @@ ILLEGAL         = 1
 DEBUG           = 0
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey (too many bytes)
-PLUSROM         = 0 ; (-41)
+PLUSROM         = 1 ; (-41)
 COPYRIGHT       = 1 ; (-40/41) add copyright notices into code
 
 RAND16          = 0 ; (-3, -1 RAM) 16-bit random values
@@ -1114,10 +1114,10 @@ TIM_2b ; 101..146 (+6) cycles (76 * 3 = 158)
     tax                         ; 2 = 15
     lda     CXP0FB              ; 3         (write: WSYNC)
     asl                         ; 2
-    rol     cxPelletBits        ; 5
+    rol     cxPelletBits        ; 5         P0 vs PF
     lda     CXPPMM              ; 3         (write: COLUP1)
     asl                         ; 2
-    rol     cxSpriteBits        ; 5
+    rol     cxSpriteBits        ; 5         P0 vs P1
     dex                         ; 2
     bmi     .exitLoop           ; 2/3
     jmp     .loopKernels        ; 3 = 27
@@ -1237,7 +1237,7 @@ OverScan SUBROUTINE
     lda     #63
   ENDIF
     sta     TIM64T
-TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly human players)
+TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly human players, less with 50% check)
 
     bit     gameState
     bmi     .startRunningMode       ; GAME_RUNNING|GAME_OVER
@@ -1245,8 +1245,6 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     jmp     .skipGameRunning
 
 ;---------------------------------------
-.skipCXPelletJmpX
-    ldx     .loopCnt
 .skipCXPelletJmp
     jmp     .skipCXPellet
 ;---------------------------------------
@@ -1299,11 +1297,11 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     tax
     lda     pfLst,x
     and     PfMask,y
-    cmp     pfLst,x
+;    cmp     pfLst,x             ; value changed?
     sta     pfLst,x
-    beq     .skipCXPelletJmpX   ; has no valid X!
+    ldx     .loopCnt            ; restore X
+;    bcs     .skipCXPelletJmp    ;  nope
     sty     .xPos
-    ldx     .loopCnt
 ; check if power-up got eaten:
     lda     xPowerLst,x
 ;    sec
@@ -1369,12 +1367,12 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     eor     #$ff                ; demo mode?
     beq     .demoModeInc
     and     Pot2Bit,x
-    beq     .skipIncSpeed2
+    beq     .skipIncSpeed
 .demoModeInc
     inc     maxLevel
     lda     playerSpeed
 ;    clc
-    adc     #DIFF_PL_SPEED-1
+    adc     #DIFF_PL_SPEED-1    ; CF == 1
     cmp     #MAX_PL_SPEED+1
     bcs     .skipPlayerSpeed
     sta     playerSpeed
@@ -1385,12 +1383,10 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
   IF MAX_EN_SPEED - 1 + DIFF_EN_SPEED < $100
     cmp     #MAX_EN_SPEED
   ENDIF
-    bcs     .skipEnemySpeed
+    bcs     .skipIncSpeed
     sta     enemySpeed
 ;    sta     bonusSpeed         ; = enemySpeed
-.skipEnemySpeed
 .skipIncSpeed
-.skipIncSpeed2
   IF LIMIT_LEVEL ;{
     ldy     levelLst,x
     iny
@@ -1412,7 +1408,8 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     lda     levelLst,x
     and     #BONUS_MASK         ; every 4th level
     bne     .skipBonus
-    lda     randomLo
+    txa
+    eor     randomLo
 ;    jsr     NextRandom
     and     Pot2Bit,x
     eor     bonusLeft
