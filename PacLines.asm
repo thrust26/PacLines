@@ -25,6 +25,8 @@
 ;   + Enemy and Bonus?
 ;   ? Player and Enemies when Bonus arrives (player is never over a pellet)
 ;   x ghost color value boost
+; ? check both (enemy & bonus) collisions every frame
+; ? merge Left- and RightDigitPtr
 
 ; Ideas:
 ; - alternative theme
@@ -168,6 +170,13 @@
 ; + support old and new controls (left difficulty)
 ; + demo mode repeating after score loop
 ; + sound in demo mode
+; + increased scores for later levels (must not overflow!)
+;   + level div 4 is OK (up to 8976 points at level 44)
+;   + multiply with BCD is slow, reduce CPU time in overscan:
+;     + pellet collision check for only 50% players
+;     x hiscore check only for 1 or 2 players/frame (??? cycles at game start)
+;     x powertim counter variable (for SCARED sound) (~200 cylces)
+
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -209,21 +218,21 @@ ILLEGAL         = 1
 DEBUG           = 0
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey (too many bytes)
-PLUSROM         = 1 ; (-41)
-COPYRIGHT       = 1 ; (-55/56) add copyright notices into code
+PLUSROM         = 0 ; (-41)
+COPYRIGHT       = 1 ; (-40/41) add copyright notices into code
 
 RAND16          = 0 ; (-3, -1 RAM) 16-bit random values
 FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
 SWITCH_DIR      = 1 ; (-28, -1 RAM)
 BUTTON_DIR      = 1 ; (-4) button press directly determines direction
                     ; (-5, if both enabled
-KILL_AI         = 1 ; (-4) enemies can kill AI players
 BIG_MOUTH       = 1 ; (0) bigger mouth for player
 HISCORE_DING    = 1 ; (-99) 10 dings at new high score
 EXTEND_COUNTDOWN= 1 ; (-12) extends countdown with each new activated player
 LONG_DEATH      = 1 ; (-??) 0 is still TODO
 LIMIT_LEVEL     = 0 ; (-9) limit level to 100 (doubtful that this can ever be reached)
 DEMO_SOUND      = 1 ; (-15) play sounds during demo mode
+MULT_SCORE      = 1 ; (-25) multiply scores by level/4
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -1228,7 +1237,7 @@ OverScan SUBROUTINE
     lda     #63
   ENDIF
     sta     TIM64T
-TIM_OS                              ; ~2293 cycles (maxLevel permanent)
+TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly human players)
 
     bit     gameState
     bmi     .startRunningMode       ; GAME_RUNNING|GAME_OVER
@@ -1251,6 +1260,12 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
 ; *** handle player/pellet collisions ***
     asl     cxPelletBits
     bcc     .skipCXPelletJmp
+; only check 50% of the players each frame:
+    txa
+    eor     frameCnt
+    lsr
+    bcc     .skipCXPelletJmp
+; check player already dead:
     lda     playerDone
     and     Pot2Bit,x
     bne     .skipCXPelletJmp
@@ -1286,13 +1301,13 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     and     PfMask,y
     cmp     pfLst,x
     sta     pfLst,x
-    beq     .skipCXPelletJmpX           ; has no valid X!
+    beq     .skipCXPelletJmpX   ; has no valid X!
     sty     .xPos
     ldx     .loopCnt
 ; check if power-up got eaten:
     lda     xPowerLst,x
 ;    sec
-    sbc     #6-1                        ; CF == 0
+    sbc     #6-1                ; CF == 0
     lsr
     lsr
     lsr
@@ -1304,9 +1319,9 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     lda     #POWER_PTS
     NOP_W
 .noPower
-    lda     #PELLET_PTS     ; = 1
+    lda     #PELLET_PTS         ; = 1
     jsr     AddScoreLo
-    lda     playerAI        ; only human players make sound
+    lda     playerAI            ; only human players make sound
   IF DEMO_SOUND
     cmp     #$ff
     beq     .demoWakaSound
@@ -1316,27 +1331,27 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
 .demoWakaSound
 ; Waka-Waka alternates between WAKA und KAWA sounds:
     lda     audIdx0
-    cmp     #BONUS_END-1    ; other sound playing?
-    bcc     .updataWaka     ;  no, updata waka
+    cmp     #BONUS_END-1        ; other sound playing?
+    bcc     .updataWaka         ;  no, updata waka
   IF DEMO_SOUND
-    cmp     #DEATH_END      ; death sound? (ranges behind sound data and might be 0)
-    bcs     .skipWaka       ;  yes, skip waka
+    cmp     #DEATH_END          ; death sound? (ranges behind sound data and might be 0)
+    bcs     .skipWaka           ;  yes, skip waka
   ENDIF
     tay
-    lda     AudF0Tbl,y      ; other sound at end?
-    bne     .skipWaka       ;  yes, skip waka, else start with 0
+    lda     AudF0Tbl,y          ; other sound at end?
+    bne     .skipWaka           ;  yes, skip waka, else start with 0
 .updataWaka
-    cmp     #WAKA_START     ; currently kawa played?
-    bcs     .playsKawa      ;  yes, switch from kawa
+    cmp     #WAKA_START         ; currently kawa played?
+    bcs     .playsKawa          ;  yes, switch from kawa
     cmp     #WAKA_MID
     bcs     .skipWaka
-    adc     #WAKA_LEN * 3   ; switch from waKA to KAwa
+    adc     #WAKA_LEN * 3       ; switch from waKA to KAwa
     bne     .setWakaIdx
 
 .playsKawa
     cmp     #KAWA_MID
     bcs     .skipWaka
-    sbc     #WAKA_LEN - 1   ; switch from kaWA to WAka
+    sbc     #WAKA_LEN - 1       ; switch from kaWA to WAka
 .setWakaIdx
     sta     audIdx0
 .skipWaka
@@ -1350,8 +1365,8 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     lda     levelLst,x
     cmp     maxLevel
     bcc     .skipIncSpeed
-    lda     playerAI        ; only human players increase speeds (except for demo mode)
-    eor     #$ff            ; demo mode?
+    lda     playerAI            ; only human players increase speeds (except for demo mode)
+    eor     #$ff                ; demo mode?
     beq     .demoModeInc
     and     Pot2Bit,x
     beq     .skipIncSpeed2
@@ -1372,7 +1387,7 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
   ENDIF
     bcs     .skipEnemySpeed
     sta     enemySpeed
-;    sta     bonusSpeed      ; = enemySpeed
+;    sta     bonusSpeed         ; = enemySpeed
 .skipEnemySpeed
 .skipIncSpeed
 .skipIncSpeed2
@@ -1390,24 +1405,24 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
 ; new line with random power-up & pellets:
     jsr     SetupPowerPellets
 ; reset bonus:
-    ldy     #X_BONUS_OFF    ; disable bonus
+    ldy     #X_BONUS_OFF        ; disable bonus
     lda     gameState
     and     #NO_BONUS_GAME
     bne     .skipBonus
     lda     levelLst,x
-    and     #BONUS_MASK     ; every 4th level
+    and     #BONUS_MASK         ; every 4th level
     bne     .skipBonus
     lda     randomLo
 ;    jsr     NextRandom
     and     Pot2Bit,x
     eor     bonusLeft
     sta     bonusLeft
-    ldy     #SCW/2-4        ; start bonus at center
+    ldy     #SCW/2-4            ; start bonus at center
 .skipBonus
     sty     xBonusLst,x
 .skipCXPellet
 ;---------------------------------------
-; *** handle player/enemy collisions ***
+; *** handle player/enemy/bonus collisions ***
     asl     cxSpriteBits
     lda     Pot2Bit,x
     and     playerDone
@@ -1457,14 +1472,18 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     lda     BonusScore,x
     ldy     BonusScoreHi,x
     ldx     .loopCnt
+  IF MULT_SCORE
+    clc
+    sed
+  ENDIF
     jsr     AddScore
 .skipCXSpriteJmp
     jmp     .skipCXSprite
 
 .checkEnemy
-    lda     Pot2Bit,x       ; already dead?
+    lda     Pot2Bit,x           ; already dead?
     bit     enemyEyes
-    bne     .skipCXSpriteJmp;  yes, skip
+    bne     .skipCXSpriteJmp    ;  yes, skip
 ; must overlap at least 4 pixels:
     lda     xPlayerLst,x
     sec
@@ -1474,18 +1493,14 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     bcs     .skipCXSpriteJmp
 
     lda     Pot2Bit,x
-    ldy     powerTimLst,x   ; power-up enabled?
-    bne     .killEnemy      ;  yes, kill enemy
+    ldy     powerTimLst,x       ; power-up enabled?
+    bne     .killEnemy          ;  yes, kill enemy
 ; kill player:
     ldy     playerAI
-    iny                     ; demo mode?
-    beq     .doDeathSound   ; enable counter in audIdx0 in demo mode (for complete death animation of last AI player)
+    iny                         ; demo mode?
+    beq     .doDeathSound       ; enable counter in audIdx0 in demo mode (for complete death animation of last AI player)
     and     playerAI
-  IF !KILL_AI
-    bne     .skipCXSpriteJmp
-  ELSE
     bne     .skipKillSound
-  ENDIF
 ; player death sound and animation:
 .doDeathSound
     lda     #DEATH_START
@@ -1500,7 +1515,7 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     bne     .skipCXSpriteJmp
 
 .killEnemy
-    ora     enemyEyes        ; -> eyes
+    ora     enemyEyes           ; -> eyes
     sta     enemyEyes
     lda     playerAI
   IF DEMO_SOUND
@@ -1530,7 +1545,7 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     and     Pot2Mask,x
 .setEnemyDir
     sta     enemyLeft
-    lda     #0              ; disable power-up
+    lda     #0                  ; disable power-up
     sta     powerTimLst,x
 .skipCXSprite
 ;---------------------------------------
@@ -1608,6 +1623,8 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
 .nextPlayer
     dex
     bpl     .loopPowerTim
+; up to 233 cycles
+
 ; siren sound?
   IF !DEMO_SOUND
     lda     playerAI            ; ignore AI lines
@@ -1814,13 +1831,13 @@ ButtonReset
     lsr
     sta     .tmpButtons
     lda     #%11001100
-    sta     WSYNC           ; wait at least one scanline
+    sta     WSYNC               ; wait at least one scanline
 ;---------------------------------------
     and     SWCHA
-    ora     .tmpButtons     ; %76435410
+    ora     .tmpButtons         ; %76435410
     eor     #$ff
     tay
-    eor     lastButtons     ; last buttons ^ new buttons
+    eor     lastButtons         ; last buttons ^ new buttons
     sty     lastButtons
 ; released: new buttons != last buttons && buttons == 0 (all released)
 ; wait for button release & press to switch
@@ -1861,7 +1878,7 @@ ContInitCart                    ; enters with CF=1
 ;---------------------------------------------------------------
 ; wait for button release & press to switch to start
 .contReset
-    lda     #GAME_START     ; ^GAME_SELECT = $00
+    lda     #GAME_START         ; ^GAME_SELECT = $00
     eor     gameState
     sta     gameState
 
@@ -1870,7 +1887,7 @@ ContInitCart                    ; enters with CF=1
     lda     #30
     sta     frameCnt
 
-.tmpXPowerLst = scoreHiLst  ; reused during GAME_START
+.tmpXPowerLst = scoreHiLst      ; reused during GAME_START
     ldx     #NUM_PLAYERS-1
 .loopClear
     lda     #$00
@@ -1883,7 +1900,7 @@ ContInitCart                    ; enters with CF=1
     bpl     .loopClear
     lda     #$ff
     sta     playerAI
-    bne     .skipRunningJmp ; skip checking both QuadTaris this frame again
+    bne     .skipRunningJmp     ; skip checking both QuadTaris this frame again
 
 ; falls  through
 
@@ -1914,7 +1931,7 @@ ContInitCart                    ; enters with CF=1
     lda     gameState
     bcs     .checkQTLeft
     and     #QT_RIGHT
-    bne     .checkButton    ; left/right bits are set opposite!
+    bne     .checkButton        ; left/right bits are set opposite!
     beq     .notPressed
 
 .checkQTLeft
@@ -1952,7 +1969,7 @@ ContInitCart                    ; enters with CF=1
     sta     WSYNC
 ;---------------------------------------
     sta     VBLANK
-    sta     WSYNC           ; wait at least one scanline
+    sta     WSYNC               ; wait at least one scanline
 ;---------------------------------------
 .skip2ndSetA
     dex
@@ -2077,15 +2094,11 @@ TIM_SPE
 
 .doneDying
     lda     playerDone
-  IF KILL_AI
     ldy     playerAI
-    iny                       ; demo mode?
-    beq     .wait4AllDone     ;  yes
+    iny                         ; demo mode?
+    beq     .wait4AllDone       ;  yes
     ora     playerAI
 .wait4AllDone
-  ELSE ;{
-    ora     playerAI
-  ENDIF ;}
     eor     #$ff
     bne     .nextMoveJmp
 
@@ -2100,12 +2113,7 @@ TIM_SPE
     lda     #2
     sta     waitedOver
 ; check for new high score:
-  IF KILL_AI
     tya                         ; demo mode? (Y = playerAI + 1)
-  ELSE ;{
-    ldy     playerAI
-    iny                         ; demo mode?
-  ENDIF ;}
     beq     .skipHiScore        ;  yes
     jsr     Get1stPlayerScore   ; get for largest score
     ldy     scoreLoLst,x        ; player in X
@@ -2637,22 +2645,26 @@ TIM_SCS ; 523..759 cycles
     NOP_IMM
 .skipHiZero
     clv
-    lda     LeftDigitPtr,y
+    lda     DigitPtr,y
     sta     .scorePtrLst,x
     dex
     dex
     pla
     and     #$0f
-    tay
     bne     .skipLoZero
     bvc     .skipLoZero
 ;    txa                        ;           display in case of score == 0
 ;    beq     .skipLoZero        ;            but who cares!? :-)
-    ldy     #ID_BLANK
+    lda     #ID_BLANK
     NOP_IMM
 .skipLoZero
     clv
-    lda     RightDigitPtr,y
+    cmp     #NUM_LO_DIGITS
+    bcc     .lowId
+    adc     #NUM_HI_DIGITS-1
+.lowId
+    tay
+    lda     DigitPtr,y
     sta     .scorePtrLst,x
     dex
     dex
@@ -2719,20 +2731,35 @@ TIM_GNPDE
 ;---------------------------------------------------------------
 AddScoreLo SUBROUTINE
 ;---------------------------------------------------------------
+; A = scoreLo
+  IF MULT_SCORE
+.scoreLo    = tmpVars + 2
+
+    sta     .scoreLo
+    lda     levelLst,x
+    lsr
+    lsr                     ; div 4
+    tay
+    clc
+    lda     #0
+    sed
+.loopMult
+    adc     .scoreLo
+    dey
+    bpl     .loopMult
+    iny
+AddScore    ; bonus only
+  ELSE ;{
+AddScore    ; bonus only
     ldy     #0
-AddScore
     sed
     clc
+  ENDIF ;}
     adc     scoreLoLst,x
     sta     scoreLoLst,x
     tya
     adc     scoreHiLst,x
     bcc     .setScore
-  IF !KILL_AI
-    lda     playerAI
-    eor     #$ff            ; demo mode?
-    beq     .setScore       ;  yes, set score
-  ENDIF
     lda     Pot2Bit,x       ; stop player
     ora     playerDone
     sta     playerDone
@@ -2743,68 +2770,38 @@ AddScore
     cld
   IF HISCORE_DING
 ; compare with current highscore and make sound if reached:
+   IF 0 ;{
+; IDEA: (X ^ frame) & %11 (two per frame)
     tay
+    txa
+    eor     frameCnt
+    and     #%11
+    bne     .exit
+DEBUG1
+    cpy     hiScoreHi
+   ELSE ;}
+    cmp     hiScoreHi
+   ENDIF
+    bcc     .exit
+    bne     .newHiScore
+    lda     hiScoreLo
+    cmp     scoreLoLst,x
+    bcs     .exit
+.newHiScore
+    lda     hiScoreLvl      ; old high score existing?
+    beq     .exit           ;  no, ignore
     lda     playerAI
     and     Pot2Bit,x
     bne     .exit
     lda     #HISCORE_DINGED
     bit     gameState
     bne     .exit
-    cpy     hiScoreHi
-    bcc     .exit
-    bne     .newHiScore
-    ldy     scoreLoLst,x
-    cpy     hiScoreLo
-    bcc     .exit
-.newHiScore
-    ldy     hiScoreLvl      ; old high score existing?
-    beq     .exit           ;  no, ignore
     ora     gameState
     sta     gameState
     lda     #HISCORE_START
     sta     audIdx1
 .exit
   ENDIF
-    rts
-
-;---------------------------------------------------------------
-SetupPowerPellets SUBROUTINE
-;---------------------------------------------------------------
-; position new power-up:
-;;---------------------------------------------------------------
-;    jsr     NextRandom
-;NextRandom SUBROUTINE
-;;---------------------------------------------------------------
-    lda     randomLo        ; 3
-    lsr                     ; 2
-  IF RAND16 ;{
-    rol     randomHi        ; 5
-  ENDIF ;}
-    bcc     .skipEor        ; 2/3
-    eor     #EOR_RND        ; 2
-.skipEor
-    sta     randomLo        ; 3 = 16/17
-  IF RAND16 ;{
-    eor     randomHi        ; 3 = 19/20
-  ENDIF ;}
-;    rts
-; /NextRandom
-    and     #$78
-    cmp     #64
-    bcc     .left
-    adc     #32-1       ; skip 4 middle positions
-.left
-; @pellet 0..7, 12..19
-;    clc
-    adc     #6
-    sta     xPowerLst,x
-SetupPellets
-    lda     #$f5
-    sta     pf01LeftLst,x
-    lda     #$fa
-    sta     pf20MiddleLst,x
-    lda     #$ff
-    sta     pf12RightLst,x
     rts
 
 CopyRight
@@ -2830,20 +2827,43 @@ COPYRIGHT_LEN SET . - CopyRight
 ;    include     Font_Levelup.inc
     include     Font_PacMan.inc
 
-  IF PLUSROM
-PlusROM_API
-    .byte   "a", 0, "h.firmaplus.de", 0
-  ELSE
-    ds      16, 0
-  ENDIF
+Pot2Mask; 5x
+    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
 
-LVL_0   = 1    ; all must NOT divide by 4! (bonus levels)
-LVL_1   = 7
-LVL_2   = 14
-LVL_3   = 22
-
-VarLevels
-    .byte   LVL_0, LVL_1, LVL_2, LVL_3
+;---------------------------------------------------------------
+SetupPowerPellets SUBROUTINE
+;---------------------------------------------------------------
+; generate next random number;
+    lda     randomLo        ; 3
+    lsr                     ; 2
+  IF RAND16 ;{
+    rol     randomHi        ; 5
+  ENDIF ;}
+    bcc     .skipEor        ; 2/3
+    eor     #EOR_RND        ; 2
+.skipEor
+    sta     randomLo        ; 3 = 16/17
+  IF RAND16 ;{
+    eor     randomHi        ; 3 = 19/20
+  ENDIF ;}
+; position new power-up:
+    and     #$78
+    cmp     #64
+    bcc     .left
+    adc     #32-1       ; skip 4 middle positions
+.left
+; @pellet 0..7, 12..19
+;    clc
+    adc     #6
+    sta     xPowerLst,x
+SetupPellets
+    lda     #$f5
+    sta     pf01LeftLst,x
+    lda     #$fa
+    sta     pf20MiddleLst,x
+    lda     #$ff
+    sta     pf12RightLst,x
+    rts
 
   IF THEME_ORG
     include     "gfx_org.h"
@@ -2868,34 +2888,40 @@ PfMask
     .byte   %10111111, %11101111, %11111011, %11111110
     .byte   %11111101, %11110111, %11011111, %01111111
 
-LeftDigitPtr
-    .byte   <Zero, <One, <Two, <Three, <Four
-    .byte   <Five, <Six, <Seven, <Eight, <Nine
-ID_BLANK = . - LeftDigitPtr
-    .byte   <Blank
-ID_PELLET = . - LeftDigitPtr
-    .byte   <PelletChar
-ID_POWER = . - LeftDigitPtr
-    .byte   <PowerChar
-ID_LETTER_L = . - LeftDigitPtr
-    .byte   <Letter_L
-ID_BONUS = . - LeftDigitPtr
-    .byte   <BonusGfx
-ID_LETTER_H = . - LeftDigitPtr
-    .byte   <Letter_H
+ButtonBit
+    .byte   %00000100
+    .byte   %00001000
+    .byte   %01000000
+    .byte   %10000000
+    .byte   %00000100
+    .byte   %00001000
+    .byte   %01000000
+    .byte   %10000000
+  CHECKPAGE ButtonBit
 
-RightDigitPtr
+; split tables because IDs are limited to 0..15
+DigitPtr
     .byte   <Zero, <One, <Two, <Three, <Four
     .byte   <Five, <Six, <Seven, <Eight, <Nine
-ID_BLANK = . - RightDigitPtr
+ID_BLANK = . - DigitPtr
     .byte   <Blank
-ID_PELLET = . - RightDigitPtr
+ID_PELLET = . - DigitPtr
     .byte   <PelletChar
-ID_DOT = . - RightDigitPtr
+NUM_LO_DIGITS = ID_PELLET + 1
+ID_POWER = . - DigitPtr
+    .byte   <PowerChar
+ID_LETTER_L = . - DigitPtr
+    .byte   <Letter_L
+ID_BONUS = . - DigitPtr
+    .byte   <BonusGfx
+ID_LETTER_H = . - DigitPtr
+    .byte   <Letter_H
+NUM_HI_DIGITS  = ID_LETTER_H + 1 - NUM_LO_DIGITS
+ID_DOT = . - DigitPtr - NUM_HI_DIGITS
     .byte   <DotChar
-ID_Letter_N = . - RightDigitPtr
+ID_Letter_N = . - DigitPtr - NUM_HI_DIGITS
     .byte   <Letter_N
-ID_LETTER_I = . - RightDigitPtr
+ID_LETTER_I = . - DigitPtr - NUM_HI_DIGITS
     .byte   <Letter_I
 
 BcdTbl
@@ -2936,6 +2962,32 @@ StartHiIds
     .byte   ID_PELLET<<4|ID_PELLET
     .byte   ID_PELLET<<4|ID_PELLET
 COUNT_START = . - StartHiIds
+
+  IF PLUSROM
+PlusROM_API
+    .byte   "a", 0, "h.firmaplus.de", 0
+  ELSE
+    ds      16, 0
+  ENDIF
+
+LVL_0   = 1    ; all must NOT divide by 4! (bonus levels)
+LVL_1   = 7
+LVL_2   = 14
+LVL_3   = 22
+
+VarLevels
+    .byte   LVL_0, LVL_1, LVL_2, LVL_3
+
+PlayerSpeeds
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
+EnemySpeeds
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
 
     COND_ALIGN_FREE_LBL GFX_H, 256, "PfColTbl"
 
@@ -3066,27 +3118,6 @@ DING_LEN    = . - DingVolTbl
 SHORT_DING_LEN    = . - ShortDingVol
   ENDIF
 
-;;---------------------------------------------------------------
-;NextRandom SUBROUTINE
-;;---------------------------------------------------------------
-;    lda     randomLo        ; 3
-;    lsr                     ; 2
-;  IF RAND16 ;{
-;    rol     randomHi        ; 5
-;  ENDIF ;}
-;    bcc     .skipEor        ; 2/3
-;    eor     #EOR_RND        ; 2
-;.skipEor
-;    sta     randomLo        ; 3 = 16/17
-;  IF RAND16 ;{
-;    eor     randomHi        ; 3 = 19/20
-;  ENDIF ;}
-;    rts
-;; /NextRandom
-
-Pot2Mask; 5x
-    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
-
 Pot2Bit; 31x
     .byte   $01, $02, $04, $08, $10, $20, $40, $80
     CHECKPAGE Pot2Bit ; inside kernel (also frequently used)
@@ -3109,28 +3140,6 @@ BonusScore
 BonusScoreHi
     .byte   $05
     .byte   $00, $00, $00, $00, $01, $02, $03
-
-PlayerSpeeds
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
-EnemySpeeds
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
-
-ButtonBit
-    .byte   %00000100
-    .byte   %00001000
-    .byte   %01000000
-    .byte   %10000000
-    .byte   %00000100
-    .byte   %00001000
-    .byte   %01000000
-    .byte   %10000000
-  CHECKPAGE ButtonBit
 
 ScoreLums
 ; highlighted:
