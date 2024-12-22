@@ -23,7 +23,11 @@ After pressing **Reset** or **Fire**, a short countdown starts. During this coun
 Immediately after the countdown the game starts. Inactive Pac-Men will be controlled by the game's AI.
 
 ### The Game
-Your Pac-Man will automatically move right. To move left, hold the fire button. The main goal is to clear all pellets of your line without getting caught by a ghost. Unlike your Pac-Man, the ghosts cannot wrap around. If you eat a bigger power pellet, you can start chasing the ghost for a limited time. The ghost will start to flash when the time expires. Also you can earn extra points by eating a bonus item.
+There are two options for determining the direction in which your Pac-Man automatically moves:
+- **Left Diffculty = B**: To move left, hold the fire button. Else your Pac-Man moves right.
+- **Left Diffculty = A**: Pressing the fire button reverses the current direction.
+
+The main goal is to clear all pellets of your line without getting caught by a ghost. Unlike your Pac-Man, the ghosts cannot wrap around. If you eat a bigger power pellet, you can start chasing the ghost for a limited time. The ghost will start to flash when the time expires. Also you can earn extra points by eating a bonus item.
 
 After clearing a line, a new line with all pellets reenabled appears. Each new line is a little faster and more difficult. The game ends when all human controlled Pac-Men have been caught by a ghost or reached 9,999 points.
 
@@ -37,15 +41,15 @@ Points are awarded for each eaten or caught object as follows:
 - bonus item: 10..500 points
 
 ### High Scores
-When the game is over, the high score of the current game variation will be displayed first (white). Then all active player's results will be displayed one by one, ordered by their rank and using the player's color. For each player, there will be two displays:
+When the game is over, the high score of the current game variation will be displayed first (white, e.g. "HI 1234"). Then all active player's results will be displayed one by one, ordered by their rank and using the player's color. For each player, there will be two displays:
 
 1. rank & score (e.g. "1. 1234")
-2. player number and line (e.g. "4 Ln.17")
+2. player number and line (e.g. "4 LN.17")
 
 The high score will be reset when a game with a different variation is started.
 
 ## Acknowledgements
-**Pac-Line x 8** has been developed and tested with **Stella**, the best emulator for the Atari 2600. The Pac-Line x 8 is based on _Paku Paku_ (https://abagames.github.io/crisp-game-lib-11-games/?pakupaku).
+**Pac-Line x 8** has been developed and tested with **Stella**, the best emulator for the Atari 2600. Pac-Line x 8 is based on _Paku Paku_ (https://abagames.github.io/crisp-game-lib-11-games/?pakupaku).
 
 Thanks to the AtariAge community for testing the game and providing valuable input.
 
