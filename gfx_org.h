@@ -1,204 +1,231 @@
+; *** Data overlapping optimized by DOOD - v0.91 ***
+; (C) 2013 Thomas Jentzsch
+
     COND_ALIGN_FREE_LBL ENEMY_GFX_LEN, 256, "EnemyGfx (gfx_org.h)"
 
 EnemyGfx
-EnemyGfx0
-    .byte   %01010101
-    .byte   %00101010
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01001001
-    .byte   %01011011
-    .byte   %01011011
-    .byte   %01001001
-    .byte   %01111111
-    .byte   %00111110
-    .byte   %00111110
-    .byte   %00011100
-EnemyGfx1
-    .byte   %00101010
-    .byte   %01010101
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01001001
-    .byte   %01011011
-    .byte   %01011011
-    .byte   %01001001
-    .byte   %01111111
-    .byte   %00111110
-    .byte   %00111110
-    .byte   %00011100
-EnemyDarkGfx0
-    .byte   %01010101
-    .byte   %01010101
-    .byte   %01111111
-    .byte   %00101010
-    .byte   %01010101
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01101011
-    .byte   %01101011
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %00111110
-    .byte   %00111110
-    .byte   %00011100
-EnemyDarkGfx1
-    .byte   %00101010
-    .byte   %01010101
-    .byte   %01111111
-    .byte   %00101010
-    .byte   %01010101
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01101011
-    .byte   %01101011
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %00111110
-    .byte   %00111110
-    .byte   %00011100
-NoEnemyGfx
-    ds      GFX_H - 6, 0
-EnemyEyesGfx            ; can be overlapped
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00100100
-    .byte   %00100100
-    .byte   %00110110
-    .byte   %00110110
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
-    .byte   %00000000
+BananaGfx ; @$0 = 0
+  .byte %00111000
+  .byte %01111100
+  .byte %01111110
+  .byte %00011110
+  .byte %00001111
+  .byte %00000111
+  .byte %00000111
+  .byte %00000011
+  .byte %00000011
+  .byte %00000011
+  .byte %00000011
+  .byte %00000010
+  .byte %00000010
+  .byte %00000100
 
-CherryGfx
-    .byte   %00000110
-    .byte   %00001111
-    .byte   %01101011
-    .byte   %11101111
-    .byte   %10101111
-    .byte   %11101111
-    .byte   %11110110
-    .byte   %11110100
-    .byte   %01100000
-    .byte   %00110010
-    .byte   %00011010
-    .byte   %00001101
-    .byte   %00000111
-    .byte   %00000011
-OrangeGfx
-    .byte   %00011100
-    .byte   %00111110
-    .byte   %00111110
-    .byte   %01111011
-    .byte   %01111101
-    .byte   %01111101
-    .byte   %01111101
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %00111110
-    .byte   %00011100
-    .byte   %00011000
-    .byte   %00110100
-StrawberryGfx
-    .byte   %00001000
-    .byte   %00011100
-    .byte   %00011100
-    .byte   %00110110
-    .byte   %00111110
-    .byte   %01111011
-    .byte   %01111111
-    .byte   %01011111
-    .byte   %01110111
-    .byte   %01111101
-    .byte   %01101111
-    .byte   %01111111
-    .byte   %00110110
-    .byte   %00011100
-AppleGfx
-    .byte   %00010100
-    .byte   %00111110
-    .byte   %00111110
-    .byte   %01111011
-    .byte   %01111101
-    .byte   %01111101
-    .byte   %01111101
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %00110110
-    .byte   %00001000
-    .byte   %00001000
-MelonGfx
-    .byte   %00111100
-    .byte   %01111110
-    .byte   %01111010
-    .byte   %01111110
-    .byte   %11111111
-    .byte   %11110101
-    .byte   %11111111
-    .byte   %11111111
-    .byte   %11111101
-    .byte   %11110111
-    .byte   %01111110
-    .byte   %01111110
-    .byte   %01111110
-    .byte   %00111100
-BananaGfx
-    .byte   %00111000
-    .byte   %01111100
-    .byte   %01111110
-    .byte   %00011110
-    .byte   %00001111
-    .byte   %00000111
-    .byte   %00000111
-    .byte   %00000011
-    .byte   %00000011
-    .byte   %00000011
-    .byte   %00000011
-    .byte   %00000010
-    .byte   %00000010
-    .byte   %00000100
-GrapesGfx
-    .byte   %00001000
-    .byte   %00010100
-    .byte   %00011100
-    .byte   %00010100
-    .byte   %00101010
-    .byte   %00111110
-    .byte   %00111010
-    .byte   %00111110
-    .byte   %01010101
-    .byte   %01101011
-    .byte   %01111111
-    .byte   %01111111
-    .byte   %00101010
-    .byte   %00001100
-PearGfx
-    .byte   %00011000
-    .byte   %00111100
-    .byte   %01110110
-    .byte   %01111010
-    .byte   %01111010
-    .byte   %01111110
-    .byte   %01111110
-    .byte   %00111100
-    .byte   %00111100
-    .byte   %00111100
-    .byte   %00011000
-    .byte   %00011000
-    .byte   %00001000
-    .byte   %00001100
+AppleGfx ; @$e = 14
+  .byte %00010100
+  .byte %00111110
+  .byte %00111110
+  .byte %01111011
+  .byte %01111101
+  .byte %01111101
+  .byte %01111101
+  .byte %01111111
+  .byte %01111111
+  .byte %01111111
+  .byte %01111111
+  .byte %00110110
+  .byte %00001000
+;  .byte %00001000
+GrapesGfx ; @$1b = 27
+  .byte %00001000
+  .byte %00010100
+  .byte %00011100
+  .byte %00010100
+  .byte %00101010
+  .byte %00111110
+  .byte %00111010
+  .byte %00111110
+  .byte %01010101
+  .byte %01101011
+  .byte %01111111
+  .byte %01111111
+  .byte %00101010
+  .byte %00001100
+
+CherryGfx ; @$29 = 41
+  .byte %00000110
+  .byte %00001111
+  .byte %01101011
+  .byte %11101111
+  .byte %10101111
+  .byte %11101111
+  .byte %11110110
+  .byte %11110100
+  .byte %01100000
+  .byte %00110010
+  .byte %00011010
+  .byte %00001101
+  .byte %00000111
+  .byte %00000011
+
+EnemyDarkGfx0 ; @$37 = 55
+  .byte %01010101
+  .byte %01010101
+  .byte %01111111
+  .byte %00101010
+  .byte %01010101
+  .byte %01111111
+  .byte %01111111
+  .byte %01101011
+  .byte %01101011
+  .byte %01111111
+  .byte %01111111
+  .byte %00111110
+  .byte %00111110
+;  .byte %00011100
+OrangeGfx ; @$44 = 68
+  .byte %00011100
+  .byte %00111110
+  .byte %00111110
+  .byte %01111011
+  .byte %01111101
+  .byte %01111101
+  .byte %01111101
+  .byte %01111111
+  .byte %01111111
+  .byte %01111111
+  .byte %00111110
+  .byte %00011100
+  .byte %00011000
+  .byte %00110100
+
+EnemyGfx0 ; @$52 = 82
+  .byte %01010101
+  .byte %00101010
+  .byte %01111111
+  .byte %01111111
+  .byte %01111111
+  .byte %01111111
+  .byte %01001001
+  .byte %01011011
+  .byte %01011011
+  .byte %01001001
+  .byte %01111111
+  .byte %00111110
+  .byte %00111110
+  .byte %00011100
+
+EnemyDarkGfx1 ; @$60 = 96
+  .byte %00101010
+  .byte %01010101
+  .byte %01111111
+  .byte %00101010
+  .byte %01010101
+  .byte %01111111
+  .byte %01111111
+  .byte %01101011
+  .byte %01101011
+  .byte %01111111
+  .byte %01111111
+  .byte %00111110
+  .byte %00111110
+  .byte %00011100
+
+PearGfx ; @$6e = 110
+  .byte %00011000
+  .byte %00111100
+  .byte %01110110
+  .byte %01111010
+  .byte %01111010
+  .byte %01111110
+  .byte %01111110
+  .byte %00111100
+  .byte %00111100
+  .byte %00111100
+  .byte %00011000
+  .byte %00011000
+  .byte %00001000
+  .byte %00001100
+
+MelonGfx ; @$7c = 124
+  .byte %00111100
+  .byte %01111110
+  .byte %01111010
+  .byte %01111110
+  .byte %11111111
+  .byte %11110101
+  .byte %11111111
+  .byte %11111111
+  .byte %11111101
+  .byte %11110111
+  .byte %01111110
+  .byte %01111110
+  .byte %01111110
+  .byte %00111100
+
+EnemyGfx1 ; @$8a = 138
+  .byte %00101010
+  .byte %01010101
+  .byte %01111111
+  .byte %01111111
+  .byte %01111111
+  .byte %01111111
+  .byte %01001001
+  .byte %01011011
+  .byte %01011011
+  .byte %01001001
+  .byte %01111111
+  .byte %00111110
+  .byte %00111110
+  .byte %00011100
+
+NoEnemyGfx ; @$98 = 152
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+;  .byte %00000000
+;  .byte %00000000
+;  .byte %00000000
+;  .byte %00000000
+;  .byte %00000000
+;  .byte %00000000
+EnemyEyesGfx            ; can be overlapped ; @$a0 = 160
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00100100
+  .byte %00100100
+  .byte %00110110
+  .byte %00110110
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+  .byte %00000000
+
+StrawberryGfx ; @$ae = 174
+  .byte %00001000
+  .byte %00011100
+  .byte %00011100
+  .byte %00110110
+  .byte %00111110
+  .byte %01111011
+  .byte %01111111
+  .byte %01011111
+  .byte %01110111
+  .byte %01111101
+  .byte %01101111
+  .byte %01111111
+  .byte %00110110
+  .byte %00011100
+                       ; @$bc = 188
+; 188/196 (95.9%)
 ENEMY_GFX_LEN = . - EnemyGfx
     CHECKPAGE EnemyGfx
 
@@ -225,18 +252,6 @@ EnemyColPtr
     .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
     .byte   <EnemyCol1, <EnemyCol2, <EnemyCol3, <EnemyCol0
     CHECKPAGE EnemyColPtr
-
-BonusPtr
-; (Cherry, Strawberry, Orange, Apple, Melon, Grapes, Banana, Pear)
-    .byte   <PearGfx
-    .byte   <CherryGfx, <StrawberryGfx, <OrangeGfx, <AppleGfx
-    .byte   <MelonGfx, <GrapesGfx, <BananaGfx
-    CHECKPAGE BonusPtr
-BonusColPtr
-    .byte   <PearCol
-    .byte   <CherryCol, <StrawberryCol, <OrangeCol, <AppleCol
-    .byte   <MelonCol, <GrapesCol, <BananaCol
-    CHECKPAGE BonusColPtr
 
 PlayerCol ; align LineCols!
   IF NTSC_COL
@@ -355,8 +370,8 @@ EnemyColBlink
     .byte   $c
     .byte   $e
     .byte   $e
-EnemyEyesCol
-    ds      GFX_H, $0e
+EnemyEyesCol = . - 8
+    ds      2, $0e          ; only 4 pixel tall
 CherryCol
     .byte   RED|$4
     .byte   RED|$6
@@ -386,21 +401,6 @@ StrawberryCol
     .byte   ORANGE|$a
     .byte   ORANGE|$a
     .byte   ORANGE|$c
-    .byte   GREEN|$8
-OrangeCol
-    .byte   BROWN|$6
-    .byte   BROWN|$8
-    .byte   BROWN|$a
-    .byte   BROWN|$a
-    .byte   BROWN|$a
-    .byte   BROWN|$a
-    .byte   BROWN|$a
-    .byte   BROWN|$c
-    .byte   BROWN|$c
-    .byte   BROWN|$c
-    .byte   BROWN|$c
-    .byte   BROWN|$e
-    .byte   GREEN|$6
     .byte   GREEN|$8
 AppleCol
     .byte   ORANGE|$4
@@ -476,7 +476,22 @@ PearCol
     .byte   GREEN_YELLOW|$c
     .byte   GREEN_YELLOW|$e
     .byte   BROWN|$6
+;    .byte   BROWN|$6
+OrangeCol
     .byte   BROWN|$6
+    .byte   BROWN|$8
+    .byte   BROWN|$a
+    .byte   BROWN|$a
+    .byte   BROWN|$a
+    .byte   BROWN|$a
+    .byte   BROWN|$a
+    .byte   BROWN|$c
+    .byte   BROWN|$c
+    .byte   BROWN|$c
+    .byte   BROWN|$c
+    .byte   BROWN|$e
+    .byte   GREEN|$6
+    .byte   GREEN|$8
 
 HumanColMask        ; Player sprite shading
     .byte   $f6
@@ -500,6 +515,18 @@ GreyCol
 AIColMask ; MUST be behind enemy colors!
     ds      GFX_H, $f0|AI_LUM       ; is it OK to cross a page?
     CHECKPAGE ColorTbls
+
+BonusPtr
+; (Cherry, Strawberry, Orange, Apple, Melon, Grapes, Banana, Pear)
+    .byte   <PearGfx
+    .byte   <CherryGfx, <StrawberryGfx, <OrangeGfx, <AppleGfx
+    .byte   <MelonGfx, <GrapesGfx, <BananaGfx
+    CHECKPAGE BonusPtr
+BonusColPtr
+    .byte   <PearCol
+    .byte   <CherryCol, <StrawberryCol, <OrangeCol, <AppleCol
+    .byte   <MelonCol, <GrapesCol, <BananaCol
+    CHECKPAGE BonusColPtr
 
     ALIGN_FREE_LBL 256, "PlayerGfx (gfx_org.h)"
 

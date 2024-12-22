@@ -9,8 +9,8 @@
 
 ; Legend:
 ; - open
-; o partially solved
-; + solved
+; o partially done
+; + done
 ; x cancelled
 ; ? maybe
 
@@ -220,6 +220,7 @@ BIG_MOUTH       = 1 ; (0) bigger mouth for player
 HISCORE_DING    = 1 ; (-99) 10 dings at new high score
 EXTEND_COUNTDOWN= 1 ; (-12) extends countdown with each new activated player
 LONG_DEATH      = 1 ; (-??) 0 is still TODO
+LIMIT_LEVEL     = 0 ; (-9) limit level to 100 (doubtful that this can ever be reached)
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -316,6 +317,7 @@ STACK_SIZE      = 6                 ; used in score & kernel row setup
     ORG     $80
 
 frameCnt        .byte               ; even: enemy drawn, odd: bonus drawn
+;frameCntHi      .byte               ; TODO: enable demo mode after (demo?) game over, in select mode (5 minutes? = 24000 frames)
 randomLo        .byte
   IF RAND16 ;{
 randomHi        .byte
@@ -1146,6 +1148,7 @@ TIM_2b ; 101..146 (+6) cycles (76 * 3 = 158)
     sta     ENABL
   IF FRAME_LINES
     sta     WSYNC
+;---------------------------------------
     lda     #FRAME_COL
     sta     WSYNC
 ;---------------------------------------
@@ -1285,8 +1288,8 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     ldx     .loopCnt
 ; check if power-up got eaten:
     lda     xPowerLst,x
-    sec
-    sbc     #6
+;    sec
+    sbc     #6-1                        ; CF == 0
     lsr
     lsr
     lsr
@@ -1336,10 +1339,10 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     cmp     maxLevel
     bcc     .skipIncSpeed
     lda     playerAI        ; only human players increase speeds (except for demo mode)
-    cmp     #$ff            ; demo mode?
+    eor     #$ff            ; demo mode?
     beq     .demoModeInc
     and     Pot2Bit,x
-    bne     .skipIncSpeed2
+    beq     .skipIncSpeed2
 .demoModeInc
     inc     maxLevel
     lda     playerSpeed
@@ -1361,6 +1364,7 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
 .skipEnemySpeed
 .skipIncSpeed
 .skipIncSpeed2
+  IF LIMIT_LEVEL ;{
     ldy     levelLst,x
     iny
     cpy     #100
@@ -1368,6 +1372,9 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     ldy     #100 - (1<<BONUS_SHIFT)*NUM_BONUS ; reset level to e.g. 68
 .incLevel
     sty     levelLst,x
+  ELSE ;}
+    inc     levelLst,x
+  ENDIF
 ; new line with random power-up & pellets:
     jsr     SetupPowerPellets
 ; reset bonus:
@@ -1378,7 +1385,8 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent)
     lda     levelLst,x
     and     #BONUS_MASK     ; every 4th level
     bne     .skipBonus
-    jsr     NextRandom
+    lda     randomLo
+;    jsr     NextRandom
     and     Pot2Bit,x
     eor     bonusLeft
     sta     bonusLeft
@@ -2718,7 +2726,24 @@ AddScore
 SetupPowerPellets SUBROUTINE
 ;---------------------------------------------------------------
 ; position new power-up:
-    jsr     NextRandom
+;;---------------------------------------------------------------
+;    jsr     NextRandom
+;NextRandom SUBROUTINE
+;;---------------------------------------------------------------
+    lda     randomLo        ; 3
+    lsr                     ; 2
+  IF RAND16 ;{
+    rol     randomHi        ; 5
+  ENDIF ;}
+    bcc     .skipEor        ; 2/3
+    eor     #EOR_RND        ; 2
+.skipEor
+    sta     randomLo        ; 3 = 16/17
+  IF RAND16 ;{
+    eor     randomHi        ; 3 = 19/20
+  ENDIF ;}
+;    rts
+; /NextRandom
     and     #$78
     cmp     #64
     bcc     .left
@@ -2760,38 +2785,12 @@ COPYRIGHT_LEN SET . - CopyRight
 ;    include     Font_Levelup.inc
     include     Font_PacMan.inc
 
-HMoveTbl
-; this is calculated with 1 cycle extra on access
-; it MUST NOT be at the END of a page
-    .byte   $60, $50, $40, $30, $20, $10, $00
-    .byte   $f0, $e0, $d0, $c0, $b0, $a0, $90, $80
-  IF (PASS > 1) & (<HMoveTbl >= $f1)
-    ECHO ""
-    ECHO "HMoveTbl aligned wrong!"
-    ECHO ""
-    ERR
-  ENDIF
-
   IF PLUSROM
 PlusROM_API
     .byte   "a", 0, "h.firmaplus.de", 0
   ELSE
     ds      16, 0
   ENDIF
-
-  IF THEME_ORG
-    include     "gfx_org.h"
-  ENDIF
-  IF THEME_ALT_1
-    include     "gfx_alt.h"
-  ENDIF
-
-Pot2Mask; 5x
-    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
-
-Pot2Bit; 31x
-    .byte   $01, $02, $04, $08, $10, $20, $40, $80
-    CHECKPAGE Pot2Bit ; inside kernel (also frequently used)
 
 LVL_0   = 1    ; all must NOT divide by 4! (bonus levels)
 LVL_1   = 7
@@ -2800,46 +2799,29 @@ LVL_3   = 22
 
 VarLevels
     .byte   LVL_0, LVL_1, LVL_2, LVL_3
-PlayerSpeeds
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
-    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
-EnemySpeeds
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
-    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
 
-; Bonus Scores:
-; Pellet          10      1
-; Power-Up        50      5
-; Enemy          100     10
-; Cherry         100     10
-; Strawberry     300     30
-; Orange         500     50        (aka Peach, Yellow Apple)
-; Apple          700     70
-; Melon         1000    100
-; Grapes        2000    200
-; Banana        3000    300
-; Pear          5000    500
-BonusScore
-    .byte   $00
-    .byte   $10, $30, $50, $70, $00, $00, $00
-BonusScoreHi
-    .byte   $05
-    .byte   $00, $00, $00, $00, $01, $02, $03
+  IF THEME_ORG
+    include     "gfx_org.h"
+  ENDIF
+  IF THEME_ALT_1
+    include     "gfx_alt.h"
+  ENDIF
 
-ButtonBit
-    .byte   %00000100
-    .byte   %00001000
-    .byte   %01000000
-    .byte   %10000000
-    .byte   %00000100
-    .byte   %00001000
-    .byte   %01000000
-    .byte   %10000000
-  CHECKPAGE ButtonBit
+PfOffset
+    ds      2, pf01LeftLst   - pfLst        ; = 0
+    ds      4, pf01LeftLst   - pfLst        ; = 0
+    ds      4, pf20MiddleLst - pfLst        ; = 4
+    ds      2, pf20MiddleLst - pfLst        ; = 4
+    ds      4, pf12RightLst  - pfLst        ; = 8
+    ds      4, pf12RightLst  - pfLst        ; = 8
+
+PfMask
+    .byte   %11011111, %01111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+    .byte   %11101111, %10111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
 
 LeftDigitPtr
     .byte   <Zero, <One, <Two, <Three, <Four
@@ -2874,6 +2856,18 @@ ID_LETTER_I = . - RightDigitPtr
 BcdTbl
     .byte $00, $06, $12, $18, $24, $30, $36
 ;    .byte $42, $48, $54, $60, $66
+
+HMoveTbl
+; this is calculated with 1 cycle extra on access
+; it MUST NOT be at the END of a page
+    .byte   $60, $50, $40, $30, $20, $10, $00
+    .byte   $f0, $e0, $d0, $c0, $b0, $a0, $90, $80
+  IF (PASS > 1) & (<HMoveTbl >= $f1)
+    ECHO ""
+    ECHO "HMoveTbl aligned wrong!"
+    ECHO ""
+    ERR
+  ENDIF
 
 StartLoIds
     .byte   ID_BLANK<<4|ID_BLANK
@@ -3027,39 +3021,71 @@ DING_LEN    = . - DingVolTbl
 SHORT_DING_LEN    = . - ShortDingVol
   ENDIF
 
-;---------------------------------------------------------------
-NextRandom SUBROUTINE
-;---------------------------------------------------------------
-    lda     randomLo        ; 3
-    lsr                     ; 2
-  IF RAND16 ;{
-    rol     randomHi        ; 5
-  ENDIF ;}
-    bcc     .skipEor        ; 2/3
-    eor     #EOR_RND        ; 2
-.skipEor
-    sta     randomLo        ; 3 = 16/17
-  IF RAND16 ;{
-    eor     randomHi        ; 3 = 19/20
-  ENDIF ;}
-    rts
-; /NextRandom
+;;---------------------------------------------------------------
+;NextRandom SUBROUTINE
+;;---------------------------------------------------------------
+;    lda     randomLo        ; 3
+;    lsr                     ; 2
+;  IF RAND16 ;{
+;    rol     randomHi        ; 5
+;  ENDIF ;}
+;    bcc     .skipEor        ; 2/3
+;    eor     #EOR_RND        ; 2
+;.skipEor
+;    sta     randomLo        ; 3 = 16/17
+;  IF RAND16 ;{
+;    eor     randomHi        ; 3 = 19/20
+;  ENDIF ;}
+;    rts
+;; /NextRandom
 
-PfOffset
-    ds      2, pf01LeftLst   - pfLst        ; = 0
-    ds      4, pf01LeftLst   - pfLst        ; = 0
-    ds      4, pf20MiddleLst - pfLst        ; = 4
-    ds      2, pf20MiddleLst - pfLst        ; = 4
-    ds      4, pf12RightLst  - pfLst        ; = 8
-    ds      4, pf12RightLst  - pfLst        ; = 8
+Pot2Mask; 5x
+    .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
 
-PfMask
-    .byte   %11011111, %01111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
-    .byte   %11101111, %10111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
+Pot2Bit; 31x
+    .byte   $01, $02, $04, $08, $10, $20, $40, $80
+    CHECKPAGE Pot2Bit ; inside kernel (also frequently used)
+
+; Bonus Scores:
+; Pellet          10      1
+; Power-Up        50      5
+; Enemy          100     10
+; Cherry         100     10
+; Strawberry     300     30
+; Orange         500     50        (aka Peach, Yellow Apple)
+; Apple          700     70
+; Melon         1000    100
+; Grapes        2000    200
+; Banana        3000    300
+; Pear          5000    500
+BonusScore
+    .byte   $00
+    .byte   $10, $30, $50, $70, $00, $00, $00
+BonusScoreHi
+    .byte   $05
+    .byte   $00, $00, $00, $00, $01, $02, $03
+
+PlayerSpeeds
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_0-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_1-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_2-1)
+    .byte   INIT_PL_SPEED+DIFF_PL_SPEED*(LVL_3-1)
+EnemySpeeds
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_0-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_1-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_2-1)
+    .byte   INIT_EN_SPEED+DIFF_EN_SPEED*(LVL_3-1)
+
+ButtonBit
+    .byte   %00000100
+    .byte   %00001000
+    .byte   %01000000
+    .byte   %10000000
+    .byte   %00000100
+    .byte   %00001000
+    .byte   %01000000
+    .byte   %10000000
+  CHECKPAGE ButtonBit
 
 ScoreLums
 ; highlighted:
