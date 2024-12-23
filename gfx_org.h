@@ -264,7 +264,7 @@ PlayerCol ; align LineCols!
     .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
   ENDIF
     .byte   WHITE   ; score display
-    CHECKPAGE PlayerCol
+    CHECKPAGE_DATA_LBL PlayerCol, "PlayerCol"
 
 LINE_LUM    = $a
 LineCols

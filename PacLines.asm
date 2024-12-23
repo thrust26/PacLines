@@ -18,18 +18,13 @@
 ; - #6 why is extra WSYNC required for Stella? (Stella bug?)
 
 ; TODOs:
-; o demo mode
-;   ? automatic start
-; o flicker
-;   ? all 3 objects
-;   + Enemy and Bonus?
-;   ? Player and Enemies when Bonus arrives (player is never over a pellet)
-;   x ghost color value boost
-; ? check both (enemy & bonus) collisions every frame
-; ? merge Left- and RightDigitPtr
+; - version number
+; - PlusCart tests
+; - PAL color checks
+; - ...
 
 ; Ideas:
-; - alternative theme
+; - alternative theme (for cart release)
 ;   ? robots (cute, bad)
 ;     - collecting tools: screw, screwdriver, screw nut, wrench,
 ;             batteries, pliers, multi meter, drilling machine
@@ -60,7 +55,7 @@
 ;   x globally
 ;   x individually
 ;   + mixed (levels individual, speed global)
-;   + trigger
+;   + speed defined by
 ;     x time
 ;     x individual level
 ;     + global level (human players only)
@@ -112,8 +107,9 @@
 ;   + %11, running
 ;   + %01, over (all human players killed)
 ; + controls
-;   x press/release to switch directions
+;   + press/release to switch directions
 ;   + hold = left, release = right
+;   + diffiulty switch changes controls
 ; + replace "lvl" with "ln."
 ; + #2 sometimes sound after game over
 ; - #1 powerLst might be able to become $ff
@@ -168,14 +164,23 @@
 ; + different font (Pac-Man)
 ; + fire buttun aborts demo and resets game
 ; + support old and new controls (left difficulty)
-; + demo mode repeating after score loop
-; + sound in demo mode
+; + demo mode
+;   + repeating after score loop
+;   + sound
+;   x automatic start
 ; + increased scores for later levels (must not overflow!)
 ;   + level div 4 is OK (up to 8976 points at level 44)
 ;   + multiply with BCD is slow, reduce CPU time in overscan:
 ;     + pellet collision check for only 50% players
 ;     x hiscore check only for 1 or 2 players/frame (??? cycles at game start)
 ;     x powertim counter variable (for SCARED sound) (~200 cylces)
+; + merge Left- and RightDigitPtr
+; + flicker
+;   x all 3 objects
+;   + Enemy and Bonus?
+;   x Player and Enemies when Bonus arrives (player is never over a pellet)
+;   x ghost color value boost
+; x check both (enemy & bonus) collisions every frame
 
 
 ;---------------------------------------------------------------
@@ -1170,56 +1175,10 @@ TIM_2b ; 101..146 (+6) cycles (76 * 3 = 158)
     sty     COLUBK
   ENDIF
     stx     VBLANK
-    jmp     ContDrawScreen
 ; /DrawScreen
 
-;---------------------------------------------------------------
-Start SUBROUTINE
-;---------------------------------------------------------------
-    lda     #0
-    tax
-    cld                     ; clear BCD math bit
-.clearLoop
-    dex
-    txs
-    pha
-    bne     .clearLoop
-;---------------------------------------------------------------
-; Detect QuadTari in left and right port
-; Check if INPT0/2 get low after ~3 frames
-    ldy     #$82
-    sty     VBLANK          ; enable bit 7, dump ports
-    sta     WSYNC
-;---------------------------------------
-.loopWaitQ
-    sta     WSYNC
-;---------------------------------------
-    sta     VBLANK          ; disable bit 7, A = 0!
-    dex
-    bne     .loopWaitQ
-    dey
-    bmi     .loopWaitQ
-; total: 3x256 = 768 scanlines = ~2.9 NTSC frames
-; Right port
-; - INPT2 = 1 && INPT3 = 1 -> Paddles
-; - INPT2 = 0 && INPT3 = 1 -> QuadTari
-; - INPT2 = 0 && INPT3 = 0 -> SaveKey
-    lda     INTIM           ; randomize
-    ora     #$01
-    sta     randomLo
-    lda     INPT0           ; 3
-    asl                     ; 2
-    lda     INPT2           ; 3
-    eor     INPT3           ; 3
-    ror                     ; 2         bit 7==0: left QuadTari; ; bit 6==1: right QuadTari
-    lsr                     ; 2
-    lsr                     ; 2
-    and     #QT_MASK        ; 2         TODO: required?
-    sec
-    jmp     ContInitCart
-;---------------------------------------------------------------
+    ; falls through
 
-ContDrawScreen
 ;---------------------------------------------------------------
 OverScan SUBROUTINE
 ;---------------------------------------------------------------
@@ -1461,11 +1420,17 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
 .skipBonusSound
 ; add bonus points:
     lda     levelLst,x
+    sbc     #1              ; or 2, does not matter here
   REPEAT BONUS_SHIFT
     lsr
   REPEND
     and     #NUM_BONUS-1
     tax
+ ; 4 = 1
+ ; 8 = 2
+ ;...
+ ;28 = 7
+ ;32 = 0
     lda     BonusScore,x
     ldy     BonusScoreHi,x
     ldx     .loopCnt
@@ -2184,8 +2149,8 @@ TIM_SPE
 .alive
 ; fix for wrap around at left border:
     lda     xPlayerLst,x
-    cmp     #SCW-SPRITE_W    ; 152
-    bcc     .normalPos
+    cmp     #SCW-SPRITE_W   ; 152 , player at very left?
+    bcc     .normalPos      ;  nope
     lda     #SCW/2-SPRITE_W/2
     cmp     xEnemyLst,x
     jmp     .contSpecial
@@ -2623,14 +2588,17 @@ TIM_SCS ; 523..759 cycles
 .loopScores
     cpx     #(4-1)*2        ; start of points?
     bne     .skipV          ;  no, skip
-    bit     Vectors+1       ; set V-flag to remove leading zeroes, bit 6 must be set!
+;    bit     Vectors+1       ; set V-flag to remove leading zeroes, bit 6 must be set!
+    bit     $ff             ; set to $fx by .scorePtrLst+1+2,x in 1st loop
 .skipV
     txa
     lsr
     lsr
     tay
     lda     .scoreLst,y
-    pha
+.tmpScore   = .scorePtrLst+3
+;    pha                     ; overwrites .scorePtr5+1
+    sta     .tmpScore
     lsr
     lsr
     lsr
@@ -2646,7 +2614,8 @@ TIM_SCS ; 523..759 cycles
     sta     .scorePtrLst,x
     dex
     dex
-    pla
+;    pla
+    lda     .tmpScore
     and     #$0f
     bne     .skipLoZero
     bvc     .skipLoZero
@@ -2663,20 +2632,62 @@ TIM_SCS ; 523..759 cycles
     tay
     lda     DigitPtr,y
     sta     .scorePtrLst,x
+    lda     #>DigitGfx          ; 2
+    sta     .scorePtrLst+1,x    ; 4
+    sta     .scorePtrLst+1+2,x  ; 4
     dex
     dex
     bpl     .loopScores
-    lda     #>DigitGfx          ; 2         TODO: 10 bytes could be saved
-    sta     .scorePtr0+1        ; 3
-    sta     .scorePtr1+1        ; 3
-    sta     .scorePtr2+1        ; 3
-    sta     .scorePtr3+1        ; 3
-    sta     .scorePtr4+1        ; 3
-    sta     .scorePtr5+1        ; 3 = 20
+
 TIM_SCE
 ; /VerticalBlank
 TIM_VE
     jmp     DrawScreen
+
+;---------------------------------------------------------------
+Start SUBROUTINE
+;---------------------------------------------------------------
+    lda     #0
+    tax
+    cld                     ; clear BCD math bit
+.clearLoop
+    dex
+    txs
+    pha
+    bne     .clearLoop
+;---------------------------------------------------------------
+; Detect QuadTari in left and right port
+; Check if INPT0/2 get low after ~3 frames
+    ldy     #$82
+    sty     VBLANK          ; enable bit 7, dump ports
+    sta     WSYNC
+;---------------------------------------
+.loopWaitQ
+    sta     WSYNC
+;---------------------------------------
+    sta     VBLANK          ; disable bit 7, A = 0!
+    dex
+    bne     .loopWaitQ
+    dey
+    bmi     .loopWaitQ
+; total: 3x256 = 768 scanlines = ~2.9 NTSC frames
+; Right port
+; - INPT2 = 1 && INPT3 = 1 -> Paddles
+; - INPT2 = 0 && INPT3 = 1 -> QuadTari
+; - INPT2 = 0 && INPT3 = 0 -> SaveKey
+    lda     INTIM           ; randomize
+    ora     #$01
+    sta     randomLo
+    lda     INPT0           ; 3
+    asl                     ; 2
+    lda     INPT2           ; 3
+    eor     INPT3           ; 3
+    ror                     ; 2         bit 7==0: left QuadTari; ; bit 6==1: right QuadTari
+    lsr                     ; 2
+    lsr                     ; 2
+    and     #QT_MASK        ; 2         TODO: required?
+    sec
+    jmp     ContInitCart
 
 ;---------------------------------------------------------------
 Get1stPlayerScore SUBROUTINE
@@ -2826,7 +2837,6 @@ COPYRIGHT_LEN SET . - CopyRight
 
 Pot2Mask; 5x
     .byte   ~$01, ~$02, ~$04, ~$08, ~$10, ~$20, ~$40, ~$80
-
 ;---------------------------------------------------------------
 SetupPowerPellets SUBROUTINE
 ;---------------------------------------------------------------
@@ -2921,7 +2931,7 @@ ID_Letter_N = . - DigitPtr - NUM_HI_DIGITS
 ID_LETTER_I = . - DigitPtr - NUM_HI_DIGITS
     .byte   <Letter_I
 
-BcdTbl
+BcdTbl ; 7 values, up to $63 = 99
     .byte $00, $06, $12, $18, $24, $30, $36
 ;    .byte $42, $48, $54, $60, $66
 
@@ -3132,11 +3142,9 @@ Pot2Bit; 31x
 ; Banana        3000    300
 ; Pear          5000    500
 BonusScore
-    .byte   $00
-    .byte   $10, $30, $50, $70, $00, $00, $00
+    .byte   $10, $30, $50, $70, $00, $00, $00, $00
 BonusScoreHi
-    .byte   $05
-    .byte   $00, $00, $00, $00, $01, $02, $03
+    .byte   $00, $00, $00, $00, $01, $02, $03, $05
 
 ScoreLums
 ; highlighted:
