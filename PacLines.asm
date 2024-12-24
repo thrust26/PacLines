@@ -19,9 +19,9 @@
 
 ; TODOs:
 ; - AI has problems with 1st pellet left of center
-; - version number
 ; - PlusCart tests
 ; - PAL color checks
+; - update version number
 ; - ...
 
 ; Ideas:
@@ -222,7 +222,7 @@ PAL50           = 0 ; not supported!
     include tv_modes.h
 
 ILLEGAL         = 1
-DEBUG           = 0
+DEBUG           = 1
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey (too many bytes)
 PLUSROM         = 1 ; (-41)
@@ -2718,53 +2718,6 @@ Start SUBROUTINE
     jmp     ContInitCart
 
 ;---------------------------------------------------------------
-Get1stPlayerScore SUBROUTINE
-;---------------------------------------------------------------
-; A = n-1
-TIM_GNPDS   ; 376 cycles
-
-.maxLo      = tmpVars
-.tmpIgnored = tmpVars+1
-
-; display AI scores in demo mode:
-    lda     playerAI
-    cmp     #$ff            ;           demo mode?
-    beq     .demoMode
-    NOP_W
-.demoMode
-    lda     #0
-GetNthPlayerScore           ;           A = previous players with higher scores
-    sta     .tmpIgnored     ; 3         ignore AI players
-    lda     #0              ; 2
-    sta     .maxLo          ; 3
-    sta     firstPlayer     ; 3         in case there are no active players
-    ldx     #NUM_PLAYERS-1  ; 2 = 16
-.loopNthMax
-    asl     .tmpIgnored     ; 5         already selected?
-    bcs     .nextNthMax     ; 2/3        yes, skip
-    cmp     scoreHiLst,x    ; 4
-    bcc     .setNthMax      ; 2/3
-    bne     .nextNthMax     ; 2/3
-    ldy     scoreLoLst,x    ; 4         (cpy abs,x is no opcode)
-    cpy     .maxLo          ; 3
-    bcc     .nextNthMax     ; 2/3
-.setNthMax
-    lda     scoreHiLst,x    ; 4
-    ldy     scoreLoLst,x    ; 4
-    sty     .maxLo          ; 3
-    stx     firstPlayer     ; 3         nth largest score player idx
-.nextNthMax
-    dex                     ; 2
-    bpl     .loopNthMax     ; 3/2       12..38
-    ldx     firstPlayer     ; 3
-    lda     ignoredScores   ; 3
-    ora     Pot2Bit,x       ; 4
-; X = nth player, A = ignored
-TIM_GNPDE
-    rts
-; /Get1stPlayerScore
-
-;---------------------------------------------------------------
 AddScoreLo SUBROUTINE
 ;---------------------------------------------------------------
 ; A = scoreLo
@@ -2854,9 +2807,40 @@ CopyRight
   ENDIF
 COPYRIGHT_LEN SET . - CopyRight
 
+
 ;===============================================================================
 ; R O M - T A B L E S (Bank 0)
 ;===============================================================================
+
+PfOffset
+    ds      2, pf01LeftLst   - pfLst        ; = 0
+    ds      4, pf01LeftLst   - pfLst        ; = 0
+    ds      4, pf20MiddleLst - pfLst        ; = 4
+    ds      2, pf20MiddleLst - pfLst        ; = 4
+    ds      4, pf12RightLst  - pfLst        ; = 8
+    ds      4, pf12RightLst  - pfLst        ; = 8
+
+PfMask
+    .byte   %11011111, %01111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+    .byte   %11101111, %10111111
+    .byte   %10111111, %11101111, %11111011, %11111110
+    .byte   %11111101, %11110111, %11011111, %01111111
+
+ScoreLums
+; highlighted:
+    .byte   $f8
+    .byte   $f8
+    .byte   $f8
+    .byte   $fa
+    .byte   $fc
+    .byte   $fe
+    .byte   $fe
+    .byte   $fc
+    .byte   $fa
+    .byte   $f8
+    CHECKPAGE ScoreLums
 
     COND_ALIGN_FREE_LBL DIGIT_GFX_LEN, 256, "DigitGfx"
 
@@ -2907,21 +2891,52 @@ SetupPellets
     include     "gfx_alt.h"
   ENDIF
 
-PfOffset
-    ds      2, pf01LeftLst   - pfLst        ; = 0
-    ds      4, pf01LeftLst   - pfLst        ; = 0
-    ds      4, pf20MiddleLst - pfLst        ; = 4
-    ds      2, pf20MiddleLst - pfLst        ; = 4
-    ds      4, pf12RightLst  - pfLst        ; = 8
-    ds      4, pf12RightLst  - pfLst        ; = 8
+;---------------------------------------------------------------
+Get1stPlayerScore SUBROUTINE
+;---------------------------------------------------------------
+; A = n-1
+TIM_GNPDS   ; 376 cycles
 
-PfMask
-    .byte   %11011111, %01111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
-    .byte   %11101111, %10111111
-    .byte   %10111111, %11101111, %11111011, %11111110
-    .byte   %11111101, %11110111, %11011111, %01111111
+.maxLo      = tmpVars
+.tmpIgnored = tmpVars+1
+
+; display AI scores in demo mode:
+    lda     playerAI
+    cmp     #$ff            ;           demo mode?
+    beq     .demoMode
+    NOP_W
+.demoMode
+    lda     #0
+GetNthPlayerScore           ;           A = previous players with higher scores
+    sta     .tmpIgnored     ; 3         ignore AI players
+    lda     #0              ; 2
+    sta     .maxLo          ; 3
+    sta     firstPlayer     ; 3         in case there are no active players
+    ldx     #NUM_PLAYERS-1  ; 2 = 16
+.loopNthMax
+    asl     .tmpIgnored     ; 5         already selected?
+    bcs     .nextNthMax     ; 2/3        yes, skip
+    cmp     scoreHiLst,x    ; 4
+    bcc     .setNthMax      ; 2/3
+    bne     .nextNthMax     ; 2/3
+    ldy     scoreLoLst,x    ; 4         (cpy abs,x is no opcode)
+    cpy     .maxLo          ; 3
+    bcc     .nextNthMax     ; 2/3
+.setNthMax
+    lda     scoreHiLst,x    ; 4
+    ldy     scoreLoLst,x    ; 4
+    sty     .maxLo          ; 3
+    stx     firstPlayer     ; 3         nth largest score player idx
+.nextNthMax
+    dex                     ; 2
+    bpl     .loopNthMax     ; 3/2       12..38
+    ldx     firstPlayer     ; 3
+    lda     ignoredScores   ; 3
+    ora     Pot2Bit,x       ; 4
+; X = nth player, A = ignored
+TIM_GNPDE
+    rts
+; /Get1stPlayerScore
 
 ButtonBit
     .byte   %00000100
@@ -2959,10 +2974,6 @@ ID_Letter_N = . - DigitPtr - NUM_HI_DIGITS
 ID_LETTER_I = . - DigitPtr - NUM_HI_DIGITS
     .byte   <Letter_I
 
-BcdTbl ; 7 values, up to $63 = 99
-    .byte $00, $06, $12, $18, $24, $30, $36
-;    .byte $42, $48, $54, $60, $66
-
 HMoveTbl
 ; this is calculated with 1 cycle extra on access
 ; it MUST NOT be at the END of a page
@@ -2974,6 +2985,10 @@ HMoveTbl
     ECHO ""
     ERR
   ENDIF
+
+BcdTbl ; 7 values, up to $63 = 99
+    .byte $00, $06, $12, $18, $24, $30, $36
+;    .byte $42, $48, $54, $60, $66
 
 StartLoIds
     .byte   ID_BLANK<<4|ID_BLANK
@@ -3173,20 +3188,6 @@ BonusScore
     .byte   $10, $30, $50, $70;, $00, $00, $00, $00
 BonusScoreHi
     .byte   $00, $00, $00, $00, $01, $02, $03, $05
-
-ScoreLums
-; highlighted:
-    .byte   $f8
-    .byte   $f8
-    .byte   $f8
-    .byte   $fa
-    .byte   $fc
-    .byte   $fe
-    .byte   $fe
-    .byte   $fc
-    .byte   $fa
-    .byte   $f8
-    CHECKPAGE ScoreLums
 
   IF !PLUSROM
     .byte   "QUADTARI"
