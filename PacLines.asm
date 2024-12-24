@@ -18,6 +18,7 @@
 ; - #6 why is extra WSYNC required for Stella? (Stella bug?)
 
 ; TODOs:
+; - AI has problems with 1st pellet left of center
 ; - version number
 ; - PlusCart tests
 ; - PAL color checks
@@ -181,6 +182,7 @@
 ;   x Player and Enemies when Bonus arrives (player is never over a pellet)
 ;   x ghost color value boost
 ; x check both (enemy & bonus) collisions every frame
+; + add powerTim counter (optional)
 
 
 ;---------------------------------------------------------------
@@ -234,10 +236,11 @@ BUTTON_DIR      = 1 ; (-4) button press directly determines direction
 BIG_MOUTH       = 1 ; (0) bigger mouth for player
 HISCORE_DING    = 1 ; (-99) 10 dings at new high score
 EXTEND_COUNTDOWN= 1 ; (-12) extends countdown with each new activated player
-LONG_DEATH      = 1 ; (-??) 0 is still TODO
-LIMIT_LEVEL     = 0 ; (-9) limit level to 100 (doubtful that this can ever be reached)
-DEMO_SOUND      = 1 ; (-15) play sounds during demo mode
+LONG_DEATH      = 1 ; (-??) = 0 is still TODO
+LIMIT_LEVEL     = 0 ; (-9) limit level to 99 (doubtful that this can ever be reached)
+DEMO_SOUND      = 1 ; (-12/15) play sounds during demo mode
 MULT_SCORE      = 1 ; (-25) multiply scores by level/4
+POWER_CNT       = 0 ; (-6) count active power-ups (saves some cycles if required)
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -385,6 +388,9 @@ playerDone      .byte               ; 0 = alive, 1 = dead/score rolled
 enemyEyes       .byte               ; 0 = alive, 1 = eyes
 ;---------------------------------------
 powerTimLst     ds NUM_PLAYERS              ;  8 bytes
+  IF POWER_CNT
+powerTimCnt     .byte
+  ENDIF
 ;---------------------------------------
 audIdxLst       ds  2
 audIdx0         = audIdxLst
@@ -1256,10 +1262,10 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     tax
     lda     pfLst,x
     and     PfMask,y
-;    cmp     pfLst,x             ; value changed?
+    cmp     pfLst,x             ; value changed? (check required!)
     sta     pfLst,x
     ldx     .loopCnt            ; restore X
-;    bcs     .skipCXPelletJmp    ;  nope
+    bcs     .skipCXPelletJmp    ;  nope
     sty     .xPos
 ; check if power-up got eaten:
     lda     xPowerLst,x
@@ -1271,6 +1277,11 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     eor     .xPos
     bne     .noPower
     sta     xPowerLst,x
+  IF POWER_CNT
+    lda     powerTimCnt
+    ora     Pot2Bit,x
+    sta     powerTimCnt
+   ENDIF
     lda     #POWER_TIM
     sta     powerTimLst,x
     lda     #POWER_PTS
@@ -1426,11 +1437,6 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
   REPEND
     and     #NUM_BONUS-1
     tax
- ; 4 = 1
- ; 8 = 2
- ;...
- ;28 = 7
- ;32 = 0
     lda     BonusScore,x
     ldy     BonusScoreHi,x
     ldx     .loopCnt
@@ -1509,6 +1515,11 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     sta     enemyLeft
     lda     #0                  ; disable power-up
     sta     powerTimLst,x
+  IF POWER_CNT
+    lda     powerTimCnt
+    and     Pot2Mask,x
+    sta     powerTimCnt
+  ENDIF
 .skipCXSprite
 ;---------------------------------------
 ; loop:
@@ -1549,9 +1560,8 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     cpy     #EYES_END           ; eaten or eyes sound playing?
     bcs     .contEnemySound     ;  yes, continue current sound
 ; enemy eyes?
-    lda     playerAI
+    lax     playerAI
   IF DEMO_SOUND
-    tax
     inx                         ; demo mode?
     bne     .notDemoEyes        ;  no, ignore AI and dead players
     txa                         ;  yes, ignore only dead players
@@ -1565,8 +1575,11 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
 ; enemy scared?
     cpy     #SCARED_END         ; scared sound playing?
     bcs     .contEnemySound     ;  yes, continue current sound
+ IF !POWER_CNT
     ldx     #NUM_PLAYERS-1
 .loopPowerTim
+    lda     powerTimLst,x
+    beq     .nextPlayer
     lda     playerAI
   IF DEMO_SOUND
     cmp     #$ff                ; demo mode?
@@ -1577,8 +1590,6 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     ora     playerDone          ;  no scared audio if powerTimLst,x is currently used for death animation
     and     Pot2Bit,x
     bne     .nextPlayer
-    lda     powerTimLst,x
-    beq     .nextPlayer
     ldx     #SCARED_IDX
     bne     .startEnemySound
 
@@ -1586,11 +1597,23 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     dex
     bpl     .loopPowerTim
 ; up to 233 cycles
+ ELSE ; POWER_CNT
+    lax     playerAI
+    eor     #$ff                ; demo mode?
+   IF DEMO_SOUND
+    bne     .contScaredSound    ;  yes, ignore only dead players
+    txa                         ;  no, ignore AI and dead players
+.contScaredSound
+   ENDIF
+    ldx     #SCARED_IDX
+    and     powerTimCnt
+    bne     .startEnemySound
+ ENDIF
 
 ; siren sound?
   IF !DEMO_SOUND
-    lda     playerAI            ; ignore AI lines
-    cmp     #$ff                ; demo mode?
+    lax     playerAI            ; ignore AI lines
+    inx                         ; demo mode?
     beq     .stopSound1         ;  yes, no sound
   ENDIF
     cpy     #SIREN_END          ; siren sound playing?
@@ -2224,10 +2247,15 @@ TIM_SPE
 .skipBonus
 ; update power-up timer:
     lda     powerTimLst,x
-    beq     .skipTim
+;    beq     .skipTim            ; superfluous check
     sec
     sbc     .tmpSpeed           ; decrease in sync with speed
     bcs     .timOk
+  IF POWER_CNT
+    lda     powerTimCnt
+    and     Pot2Mask,x
+    sta     powerTimCnt
+  ENDIF
     lda     #0
 .timOk
     sta     powerTimLst,x
@@ -3142,7 +3170,7 @@ Pot2Bit; 31x
 ; Banana        3000    300
 ; Pear          5000    500
 BonusScore
-    .byte   $10, $30, $50, $70, $00, $00, $00, $00
+    .byte   $10, $30, $50, $70;, $00, $00, $00, $00
 BonusScoreHi
     .byte   $00, $00, $00, $00, $01, $02, $03, $05
 
