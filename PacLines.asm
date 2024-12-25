@@ -16,7 +16,6 @@
 
 ; BUGs:
 ; - #6 why is extra WSYNC required for Stella? (Stella bug?)
-; - demo code too slow (only score of player 0 displayed)
 
 ; TODOs:
 ; - AI has problems with 1st pellet left of center
@@ -186,6 +185,7 @@
 ; x check both (enemy & bonus) collisions every frame
 ; + add powerTim counter (optional)
 ; + only highest bonus from line 32 on
+; + #7 score display after demo mode starts wrong
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -2151,6 +2151,7 @@ TIM_SPE
     sta     gameState
     lda     #0
     sta     AUDV1
+    sta     frameCnt            ; make score display loop start from 1.
     jmp     .skipRunning
 
 .doMove
