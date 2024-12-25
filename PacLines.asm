@@ -16,12 +16,14 @@
 
 ; BUGs:
 ; - #6 why is extra WSYNC required for Stella? (Stella bug?)
+; - demo code too slow (only score of player 0 displayed)
 
 ; TODOs:
 ; - AI has problems with 1st pellet left of center
 ; - PlusCart tests
 ; - PAL color checks
 ; - update version number
+; ? replace top fruits with original Pac-Man items: Galaxian, Bell, Key
 ; - ...
 
 ; Ideas:
@@ -39,7 +41,7 @@
 ; ? pellets, wafers, dots...?
 ; ? wider enemies?
 ; ? deadly bonuses (mushrooms)
-; x countdown with Pac-Man
+; x countdown with player graphics eating pellets
 ; x high score screen (787 cycles per line?)
 ; ? 16-bit random
 
@@ -183,7 +185,7 @@
 ;   x ghost color value boost
 ; x check both (enemy & bonus) collisions every frame
 ; + add powerTim counter (optional)
-
+; + only highest bonus from line 32 on
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -241,6 +243,7 @@ LIMIT_LEVEL     = 0 ; (-9) limit level to 99 (doubtful that this can ever be rea
 DEMO_SOUND      = 1 ; (-12/15) play sounds during demo mode
 MULT_SCORE      = 1 ; (-25) multiply scores by level/4
 POWER_CNT       = 0 ; (-6) count active power-ups (saves some cycles if required)
+MAX_BONUS       = 1 ; (-12) only highest bonus item(s) after level 32
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -916,6 +919,12 @@ TIM_2a
   REPEAT BONUS_SHIFT
     lsr                         ; 2/4/6     every 4th level
   REPEND                        ;   =  6..10
+  IF MAX_BONUS
+    cmp     #NUM_BONUS          ;
+    bcc     .lowerLevel
+    lda     #0                  ;           show top bonus
+.lowerLevel
+  ENDIF
     and     #NUM_BONUS-1        ; 2
     tay                         ; 2
     lda     BonusPtr,y          ; 4
@@ -1431,10 +1440,16 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
 .skipBonusSound
 ; add bonus points:
     lda     levelLst,x
-    sbc     #1              ; or 2, does not matter here
+    sbc     #1                  ; or 2, does not matter here
   REPEAT BONUS_SHIFT
     lsr
   REPEND
+  IF MAX_BONUS
+    cmp     #NUM_BONUS
+    bcc     .lowerLevel
+    lda     #NUM_BONUS-1        ; score top bonus
+.lowerLevel
+  ENDIF
     and     #NUM_BONUS-1
     tax
     lda     BonusScore,x
@@ -1452,6 +1467,7 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     lda     Pot2Bit,x           ; already dead?
     bit     enemyEyes
     bne     .skipCXSpriteJmp    ;  yes, skip
+
 ; must overlap at least 4 pixels:
     lda     xPlayerLst,x
     sec
@@ -3178,12 +3194,12 @@ Pot2Bit; 31x
 ; Enemy          100     10
 ; Cherry         100     10
 ; Strawberry     300     30
-; Orange         500     50        (aka Peach, Yellow Apple)
+; Orange         500     50         (aka Peach, Yellow Apple)
 ; Apple          700     70
 ; Melon         1000    100
-; Grapes        2000    200
-; Banana        3000    300
-; Pear          5000    500
+; Grapes        2000    200         (Galaxian)
+; Banana        3000    300         (Bell)
+; Pear          5000    500         (Key)
 BonusScore
     .byte   $10, $30, $50, $70;, $00, $00, $00, $00
 BonusScoreHi
@@ -3191,9 +3207,7 @@ BonusScoreHi
 
   IF !PLUSROM
     .byte   "QUADTARI"
-  IF COPYRIGHT
     .byte   "JTZ"
-COPYRIGHT_LEN SET COPYRIGHT_LEN + 3
   ENDIF
 
     ORG_FREE_LBL BASE_ADR + $ffc, "Vectors"
@@ -3201,10 +3215,7 @@ COPYRIGHT_LEN SET COPYRIGHT_LEN + 3
     ORG_FREE_LBL BASE_ADR + $ff0-1, "PlusROM Hotspots" ; next 4 bytes must not be accessed!
 
     .byte   "QUADTARI"
-;  IF COPYRIGHT
     .byte   "JTZ"
-;COPYRIGHT_LEN SET COPYRIGHT_LEN + 3
-;  ENDIF
 
     ORG_FREE_LBL BASE_ADR + $ffa, "Vectors"
     .word PlusROM_API - BASE_ADR + $1000 ; must be $1xxx!
