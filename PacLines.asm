@@ -1804,9 +1804,9 @@ ButtonReset
     and     #VAR_MASK
     eor     gameState
     sta     gameState
-    bpl     .skipSwitches
-    DEBUG_BRK
-
+;    bpl     .skipSwitches
+;    DEBUG_BRK
+    NOP_W
 .notSwitched
 ;    lda     debounce
 ;    and     #~DEBOUNCE
@@ -2040,6 +2040,7 @@ ContInitCart                    ; enters with CF=1
 .runningMode
 TIM_SPS ; 56..91 cycles (more to VSYNC?)
     lda     #0
+    tax
     sta     .playerSpeed
     lda     playerSpeed
     asl
@@ -2047,9 +2048,9 @@ TIM_SPS ; 56..91 cycles (more to VSYNC?)
     adc     playerSpeedSum
     sta     playerSpeedSum
     bcc     .skipIncPlayer
-    inc     .playerSpeed        ; +4
+    inc     .playerSpeed        ;           -> 0..2
 .skipIncPlayer
-    lda     #0
+    txa
     sta     .enemySpeed
     lda     enemySpeed
     asl
@@ -2057,14 +2058,14 @@ TIM_SPS ; 56..91 cycles (more to VSYNC?)
     adc     enemySpeedSum
     sta     enemySpeedSum
     bcc     .skipIncEnemy
-    inc     .enemySpeed         ; +4
+    inc     .enemySpeed         ;           -> 0..2
 .skipIncEnemy
     lda     frameCnt            ; 3
     lsr                         ; 2
     bcc     .skipBonusSpeed     ; 2/3=  7/8
-    lda     #0                  ; 2
+    txa                         ; 2
     sta     .bonusSpeed         ; 3
-    lda     bonusSpeed          ; 3         ; = enemySpeed
+    lda     bonusSpeed          ; 3         = enemySpeed
     asl                         ; 2
     rol     .bonusSpeed         ; 5
     adc     bonusSpeedSum       ; 3
@@ -2132,26 +2133,26 @@ TIM_SPE
   IF PLUSROM
 ; only new high scores are send:
     lda     gameState
-    and     #VAR_MASK
-    sta     WriteToBuffer
-    ldx     #HISCORE_BYTES-1
+    and     #VAR_MASK           ; TODO: optimize into HSC
+;    sta     WriteToBuffer
+    ldx     #HISCORE_BYTES+1
+    NOP_W
 .loopSendHiScore
-    lda     hiScoreLst,x
-    sta     WriteToBuffer       ; line, hi, lo
+    lda     hiScoreLst-1,x
+    sta     WriteToBuffer       ; var, line, hi, lo
     dex
-    bpl     .loopSendHiScore
-    stx     frameCnt
+    bne     .loopSendHiScore
     COMMIT_PLUSROM_SEND
   ELSE
-    ds      39-2-16, $ea
+    ds      39-7-16, $ea
+    ldx     #0
   ENDIF
 .skipHiScore
     lda     gameState
     eor     #GAME_RUNNING^GAME_OVER
     sta     gameState
-    lda     #0
-    sta     AUDV1
-    sta     frameCnt            ; make score display loop start from 1.
+    stx     AUDV1
+    stx     frameCnt            ; make score display loop start from 1.
     jmp     .skipRunning
 
 .doMove
@@ -3209,7 +3210,6 @@ BonusScoreHi
   IF !PLUSROM
     .byte   "QUADTARI"
     .byte   "JTZ"
-  ENDIF
 
     ORG_FREE_LBL BASE_ADR + $ffc, "Vectors"
   ELSE
