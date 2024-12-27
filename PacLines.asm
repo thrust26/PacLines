@@ -227,7 +227,7 @@ ILLEGAL         = 1
 DEBUG           = 1
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey (too many bytes)
-PLUSROM         = 1 ; (-41)
+PLUSROM         = 1 ; (-34)
 COPYRIGHT       = 1 ; (-40/41) add copyright notices into code
 
 RAND16          = 0 ; (-3, -1 RAM) 16-bit random values
@@ -345,7 +345,6 @@ randomLo        .byte
   IF RAND16 ;{
 randomHi        .byte
   ENDIF ;}
-gameState       .byte               ; MMrLDBVV  Mode, Right/Left QuadTari, Dinged, Bonus, Variation
 debounce        .byte               ; D.......  Debounce ; TODO: = powerTimLst?
 ;---------------------------------------
 levelLst        ds  NUM_PLAYERS
@@ -403,11 +402,14 @@ scoreLst        ds  NUM_PLAYERS*2           ; 16 bytes
 scoreLoLst      = scoreLst
 scoreHiLst      = scoreLst+NUM_PLAYERS
 NUM_RESETS      = . - resetLst
+;---------------------------------------
 HISCORE_BYTES   = 3
-hiScoreLst      ds  HISCORE_BYTES
+hiScoreLst      ds  HISCORE_BYTES   ; must be followed by gameState for PlusROM HSC
 hiScoreLo       = hiScoreLst
 hiScoreHi       = hiScoreLst+1
 hiScoreLvl      = hiScoreLst+2
+gameState       .byte               ; MMrLDBVV  Mode, Right/Left QuadTari, Dinged, Bonus, Variation
+;---------------------------------------
 countDown       = scoreLoLst        ; reused during GAME_START
 ;---------------------------------------
 cxPelletBits    .byte               ; temporary
@@ -2101,13 +2103,10 @@ TIM_SPE
 .wait4AllDone
     eor     #$ff
     bne     .nextMoveJmp
-
 ; game over, display scores:
     sta     lastButtons         ; A = 0
-  IF !PLUSROM
-    sta     frameCnt
-    dec     frameCnt
-  ENDIF
+    sta     AUDV1
+    sta     frameCnt            ; make score display loop start from 1.
     sta     playerIdx
     sta     ignoredScores
     lda     #2
@@ -2130,27 +2129,20 @@ TIM_SPE
     sta     hiScoreLvl
   IF PLUSROM
 ; only new high scores are send:
-    lda     gameState
-    and     #VAR_MASK           ; TODO: optimize into HSC
-;    sta     WriteToBuffer
-    ldx     #HISCORE_BYTES+1
-    NOP_W
+    ldx     #HISCORE_BYTES      ; including gameState
 .loopSendHiScore
-    lda     hiScoreLst-1,x
+    lda     hiScoreLst,x
     sta     WriteToBuffer       ; var, line, hi, lo
     dex
-    bne     .loopSendHiScore
+    bpl     .loopSendHiScore
     COMMIT_PLUSROM_SEND
   ELSE
-    ds      39-7-16, $ea
-    ldx     #0
+    ds      34-16, $ea
   ENDIF
 .skipHiScore
     lda     gameState
     eor     #GAME_RUNNING^GAME_OVER
     sta     gameState
-    stx     AUDV1
-    stx     frameCnt            ; make score display loop start from 1.
     jmp     .skipRunning
 
 .doMove
