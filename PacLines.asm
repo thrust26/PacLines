@@ -1203,8 +1203,8 @@ OverScan SUBROUTINE
 ; - update audio
 
 .loopCnt        = tmpVars
-.xPos           = tmpVars+1
-.playerAI       = tmpVars+3
+.playerAI       = tmpVars+1
+.xPos           = tmpVars+2
 
   IF NTSC_TIM
     lda     #37+1                   ; allows up to 2368 cycles
@@ -1229,8 +1229,7 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     ldx     #NUM_PLAYERS-1
 .loopPlayers
     stx     .loopCnt
-
-DEBUG0
+; extract AI row info for easier, more compact further processing:
     lda     playerAI
     cmp     #$ff
     beq     .setPlayerAI            ; demo mode?
@@ -1240,8 +1239,6 @@ DEBUG0
 .setPlayerAI
     sta     .playerAI               ; = 0, 1, $ff
 ; 15 bytes
-
-
 ;---------------------------------------
 ; *** handle player/pellet collisions ***
     asl     cxPelletBits
@@ -1312,20 +1309,11 @@ DEBUG0
 .noPower
     lda     #PELLET_PTS         ; = 1
     jsr     AddScoreLo
-;    lda     playerAI            ; only human players make sound
-;  IF DEMO_SOUND
-;    cmp     #$ff
-;    beq     .demoWakaSound
-;  ENDIF
-;    and     Pot2Bit,x
-;    bne     .skipWaka
-
     lda     .playerAI
   IF DEMO_SOUND
     bmi     .demoWakaSound
   ENDIF
-    bne     .skipWaka
-
+    bne     .skipWaka           ; only human players make sound
 .demoWakaSound
 ; Waka-Waka alternates between WAKA und KAWA sounds:
     lda     audIdx0
@@ -1363,16 +1351,9 @@ DEBUG0
     lda     levelLst,x
     cmp     maxLevel
     bcc     .skipIncSpeed
-;    lda     playerAI            ; only human players increase speeds (except for demo mode)
-;    eor     #$ff                ; demo mode?
-;    beq     .demoModeInc
-;    and     Pot2Bit,x
-;    beq     .skipIncSpeed
-
-    lda     .playerAI
-    bmi     .demoModeInc
+    lda     .playerAI           ; only human players increase speeds (except for demo mode)
+    bmi     .demoModeInc        ; demo mode
     bne     .skipIncSpeed
-
 .demoModeInc
     inc     maxLevel
     lda     playerSpeed
@@ -1448,20 +1429,11 @@ DEBUG0
     lda     #X_BONUS_OFF
     sta     xBonusLst,x
 ; play bonus eaten sound:
-;    lda     playerAI
-;  IF DEMO_SOUND
-;    cmp     #$ff
-;    beq     .demoBonusSound
-;  ENDIF
-;    and     Pot2Bit,x
-;    bne     .skipBonusSound
-
     lda     .playerAI
   IF DEMO_SOUND
     bmi     .demoBonusSound
   ENDIF
     bne     .skipBonusSound
-
 .demoBonusSound
     lda     audIdx0
     cmp     #DEATH_END
@@ -1513,16 +1485,9 @@ DEBUG0
     ldy     powerTimLst,x       ; power-up enabled?
     bne     .killEnemy          ;  yes, kill enemy
 ; kill player:
-;    ldy     playerAI
-;    iny                         ; demo mode?
-;    beq     .doDeathSound       ; enable counter in audIdx0 in demo mode (for complete death animation of last AI player)
-;    and     playerAI
-;    bne     .skipKillSound
-
     lda     .playerAI
     bmi     .doDeathSound       ; demo mode, enable counter in audIdx0 in demo mode (for complete death animation of last AI player)
     bne     .skipKillSound
-
 ; player death sound and animation:
 .doDeathSound
     lda     #DEATH_START
@@ -1539,20 +1504,11 @@ DEBUG0
 .killEnemy
     ora     enemyEyes           ; -> eyes
     sta     enemyEyes
-;    lda     playerAI
-;  IF DEMO_SOUND
-;    cmp     #$ff
-;    beq     .demoEatenSound
-;  ENDIF
-;    and     Pot2Bit,x
-;    bne     .skipEatenSound
-
     lda     .playerAI
   IF DEMO_SOUND
     bmi     .demoEatenSound
   ENDIF
     bne     .skipEatenSound
-
 .demoEatenSound
     lda     #EATEN_START
     sta     audIdx1
@@ -1673,11 +1629,7 @@ DEBUG0
 
 ; siren sound?
   IF !DEMO_SOUND
-;    lax     playerAI            ; ignore AI lines
-;    inx                         ; demo mode?
-;    beq     .stopSound1         ;  yes, no sound
-
-    lda     .playerAI            ; ignore AI lines
+    lda     .playerAI           ; ignore AI lines
     bmi     .stopSound1         ;  demo mode, no sound
   ENDIF
     cpy     #SIREN_END          ; siren sound playing?
@@ -1760,10 +1712,6 @@ TIM_A0S ; 40 (all AI)..102 (all human)
     tay
     txa
   IF !DEMO_SOUND
-;    ldx     playerAI
-;    cpx     #$ff
-;    beq     .contDeath          ; X == $ff! -> mute sound
-
     ldx     .playerAI
     bmi     .contDeath          ; X == $ff! -> mute sound
   ENDIF
@@ -2789,9 +2737,9 @@ Start SUBROUTINE
 AddScoreLo SUBROUTINE
 ;---------------------------------------------------------------
 ; A = scoreLo
+.playerAI   = tmpVars + 1   ; only called from OverScan
   IF MULT_SCORE
 .scoreLo    = tmpVars + 2
-
     sta     .scoreLo
     lda     levelLst,x
     lsr
@@ -2847,9 +2795,11 @@ DEBUG1
 .newHiScore
     lda     hiScoreLvl      ; old high score existing?
     beq     .exit           ;  no, ignore
-    lda     playerAI
-    and     Pot2Bit,x
+;    lda     playerAI
+;    and     Pot2Bit,x
+    lda     .playerAI
     bne     .exit
+
     lda     #HISCORE_DINGED
     bit     gameState
     bne     .exit
