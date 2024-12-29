@@ -2805,15 +2805,15 @@ DEBUG1
 
 CopyRight
   IF COPYRIGHT
-    .byte   "Pac-Line x 8"
-;    .byte    "V"
-;    VERSION_STR
+    .byte   " Pac-Line x 8"
+    .byte    " - V"
+    VERSION_STR
    IF NTSC_COL
-    .byte   " NTSC"
+    .byte   " (NTSC)"
    ELSE
-    .byte   " PAL60"
+    .byte   " (PAL60)"
    ENDIF
-    .byte   " (C)2024 Th.Jentzsch"
+    .byte   " - (C)2024 Thomas Jentzsch "
   ENDIF
 COPYRIGHT_LEN SET . - CopyRight
 
