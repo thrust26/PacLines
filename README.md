@@ -3,7 +3,7 @@ Copyright 2024 - Thomas Jentzsch
 
 ## The Game
 
-**Pac-Line x 8** is a 4K, one button, up to eight simultaneous players Pac-Line game for the Atari 2600.
+**Pac-Line x 8** is a 4K, one button, up to eight simultaneous players, Pac-Line game for the Atari 2600.
 
 ## Controls
 ### Paddles
@@ -18,16 +18,16 @@ To start a new game press **Reset**. Or **Fire** while not in a running game.
 
 ## Playing the Game
 ### Start Countdown
-After pressing **Reset** or **Fire**, a short countdown starts. During this countdown, each player must press the paddle fire button to activate her/his lines for the game. Activated lines are displayed colored and with their pellets enabled.
+After pressing **Reset** or **Fire**, a short countdown starts. During this countdown, each player must press the paddle fire button to activate her/his Pac-Man for the game. Activated lines are displayed colored and with their pellets enabled.
 
-Immediately after the countdown the game starts. Inactive Pac-Men will be controlled by the game's AI.
+The game starts immediately after the countdown. Inactive Pac-Men will be controlled by the game's AI. If no Pac-Man got actived, the AI will start playing with itself (demo mode).
 
 ### The Game
 There are two options for determining the direction in which your Pac-Man automatically moves:
 - **Left Diffculty = B**: To move left, hold the fire button. Else your Pac-Man moves right.
 - **Left Diffculty = A**: Pressing the fire button reverses the current direction.
 
-The main goal is to clear all pellets of your line without getting caught by a ghost. Unlike your Pac-Man, the ghosts cannot wrap around. If you eat a bigger power pellet, you can start chasing the ghost for a limited time. The ghost will start to flash when the time expires. Also you can earn extra points by eating a bonus item.
+The main goal is to clear all pellets of your line without getting caught by a ghost. Unlike your Pac-Man, the ghosts cannot wrap around. If you eat a bigger power pellet, you can start chasing the ghost for a limited time. The ghost will start to flash when the time expires. Also you can earn extra points by eating a bonus item which appears every 4th line.
 
 After clearing a line, a new line with all pellets reenabled appears. Each new line is a little faster and more difficult. The game ends when all human controlled Pac-Men have been caught by a ghost or reached 9,999 points.
 
@@ -35,10 +35,12 @@ After clearing a line, a new line with all pellets reenabled appears. Each new l
 The row number and score of the current leading player is displayed at the top of the screen, alternating with the current line number and using the player's color.
 
 Points are awarded for each eaten or caught object as follows:
-- pellet: 1 point
-- power pellet: 5 points
-- ghost: 10 points
+- pellet: 1.. points 
+- power pellet: 5.. points
+- ghost: 10.. points
 - bonus item: 10..500 points
+
+The points for pellets and ghosts are multipied by a factor. It starts at 1 and is increased by 1 every 4th line. 
 
 ### High Scores
 When the game is over, the high score of the current game variation will be displayed first (white, e.g. "HI 1234"). Then all active player's results will be displayed one by one, ordered by their rank and using the player's color. For each player, there will be two displays:
