@@ -517,15 +517,15 @@ AIColMask ; MUST be behind enemy colors!
     CHECKPAGE ColorTbls
 
 BonusPtr
-; (Cherry, Strawberry, Orange, Apple, Melon, Grapes, Banana, Pear)
-    .byte   <PearGfx
+; (Cherry, Strawberry, Orange, Apple, Melon, Grapes, Pear, Banana)
+    .byte   <BananaGfx
     .byte   <CherryGfx, <StrawberryGfx, <OrangeGfx, <AppleGfx
-    .byte   <MelonGfx, <GrapesGfx, <BananaGfx
+    .byte   <MelonGfx, <GrapesGfx, <PearGfx
     CHECKPAGE BonusPtr
 BonusColPtr
-    .byte   <PearCol
+    .byte   <BananaCol
     .byte   <CherryCol, <StrawberryCol, <OrangeCol, <AppleCol
-    .byte   <MelonCol, <GrapesCol, <BananaCol
+    .byte   <MelonCol, <GrapesCol, <PearCol
     CHECKPAGE BonusColPtr
 
     ALIGN_FREE_LBL 256, "PlayerGfx (gfx_org.h)"

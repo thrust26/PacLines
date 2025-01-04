@@ -19,7 +19,6 @@
 
 ; TODOs:
 ; - AI has problems with 1st pellet left of center
-; - PlusCart tests
 ; - PAL color checks
 ; - update version number
 ; ? replace top fruits with original Pac-Man items: Galaxian, Bell, Key
@@ -186,6 +185,7 @@
 ; + add powerTim counter (optional)
 ; + only highest bonus from line 32 on
 ; + #7 score display after demo mode starts wrong
+; + PlusCart tests
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -212,7 +212,7 @@
 ; A S S E M B L E R - S W I T C H E S
 ;===============================================================================
 
-VERSION         = $0091
+VERSION         = $0092
 BASE_ADR        = $f000     ; 4K
 
   IFNCONST TV_MODE ; manually defined here
@@ -287,7 +287,7 @@ BONUS_MASK      = (1<<BONUS_SHIFT)-1
 
 DELTA_SPEED     = 140                   ; 40% delta; start: player d% faster, end: enemy d% faster
 INIT_EN_SPEED   = 48
-DIFF_EN_SPEED   = 7-1
+DIFF_EN_SPEED   = 6
 MAX_EN_SPEED    = 255                   ; reached after 35 levels
 INIT_PL_SPEED   = (INIT_EN_SPEED * DELTA_SPEED + 50) / 100    ; -> equal speed after ~9 levels
 DIFF_PL_SPEED   = DIFF_EN_SPEED - 2                                     ; = 4
@@ -2324,12 +2324,69 @@ TIM_SPE
     lda     enemyEyes
     and     Pot2Bit,x
     bne     .skipAI
+; *** AI Logic ***
+; 1. chase ghost
+;    - while power is enabled
+;    - stop chasing when power time runs out
+;    - time enough to reach border/ghost: chase
+;    - else use AI from 2.
+; 2. run away from ghost without power if ghost is close
+;    - close means, distance to ghost smaller than 1.5x distance to opposite border
+
+
 ; different AI during earlier power mode:
+
+
+; xPlayer * 1.5 | 160 - xPlayer * 1.5 > powerTim -> use no power AI
+
+DEBUG0
+  IF 0 ;{
+;    lda     xPlayerLst,x
+;    lsr
+;    adc     xPlayerLst,x        ; e.g. 120 * 3 / 2 = 180
+;    tay
+    lda     xPlayerLst,x
+    cmp     xEnemyLst,x
+ ;   tya
+    bcc     .aiPowerRight
+; enemy at left:
+    cmp     powerTimLst,x
+    bcs     .enemyLeft          ; no power AI
+    bcc     .moveLeft           ; chase!
+
+
+.aiPowerRight
+    eor     #$ff                ; -180
+    adc     #SCW*2/2            ; +241 = 60
+    cmp     powerTimLst,x
+;    tya
+    lda     xPlayerLst,x
+    bcs     .enemyRight         ; no power AI
+    bcc     .moveRight          ; chase!
+
+
+
+;    cmp     #SCW*3/4            ; (80 * 1.5 = 120)
+;    bcc     .atLeft
+;    eor     #$ff                ; = -181
+;    adc     #SCW*3/2            ; +  241
+;.atLeft
+;    cmp     powerTimLst,x
+;    lda     xPlayerLst,x
+;    bcs     .noAIPower
+
+  ENDIF ;}
+    lda     maxLevel
+    cmp     #16
     lda     xPlayerLst,x
     ldy     powerTimLst,x
+    bcs     .lateLevels
+    cpy     #POWER_TIM*1/8
+    NOP_W
+.lateLevels
     cpy     #POWER_TIM*1/4
     bcc     .noAIPower
-; AI player has power
+ ; AI player has power:
     cmp     xEnemyLst,x
     bcs     .moveLeft
     bcc     .moveRight
@@ -2338,6 +2395,7 @@ TIM_SPE
 ; AI player has no power:
     cmp     xEnemyLst,x
     bcc     .enemyRight
+;.enemyLeft
 ; enemy left:
 ; (159 - xPlayer) * 1.5 - (159 - xEnemy) >= 0  ->  right
 ; 239 - xPlayer * 1.5 - 159 + xEnemy     >= 0
@@ -3192,8 +3250,8 @@ Pot2Bit; 31x
 ; Apple          700     70
 ; Melon         1000    100
 ; Grapes        2000    200         (Galaxian)
-; Banana        3000    300         (Bell)
-; Pear          5000    500         (Key)
+; Pear          3000    300         (Bell)
+; Banana        5000    500         (Key)
 BonusScore
     .byte   $10, $30, $50, $70;, $00, $00, $00, $00
 BonusScoreHi
