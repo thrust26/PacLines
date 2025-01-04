@@ -52,14 +52,14 @@
 ;     + enemies accelerate faster than players
 ;     + maximum speed for players and enemies
 ;     + players reach maximum speed earlier than enemies
-;   + different start levels (e.g. 1, 5, 9; displayed with starting level)
+;   + different start lines (e.g. 1, 5, 9; displayed with starting line)
 ;   x globally
 ;   x individually
-;   + mixed (levels individual, speed global)
+;   + mixed (lines individual, speed global)
 ;   + speed defined by
 ;     x time
-;     x individual level
-;     + global level (human players only)
+;     x individual line
+;     + global line (human players only)
 ; + AI
 ;   + enemies (following player)
 ;     + hunting: move to player (no wrapping)
@@ -69,23 +69,23 @@
 ; + display
 ;   + score
 ;     + color gradients
-;     + level
+;     + line
 ;     + displayed player number
 ;     x hex score stored, converted to BCD (up to 65,535 instead 9,999)
 ;     + display top score
-;     x display score of player which changed level last
-;     x display score of player which set new maximum level
+;     x display score of player which changed line last
+;     x display score of player which set new maximum line
 ;     + do not display "Ln. 0"
 ;     + display player number alterating with rank number (solves close colors problem)
 ; + bonus items
-;   + based on current individual level
+;   + based on current individual line
 ;   + when should they appear?
-;     + either at start of new level (delayed?)
-;     x or when power-up gets collected (disapear at next level)
+;     + either at start of new line (delayed?)
+;     x or when power-up gets collected (disapear at next line)
 ;   + when shoud bonuses disappear?
 ;     x disappear at border
 ;     x when power-up gets eaten
-;     + when level is finished
+;     + when line is finished
 ;     x never (when eaten or new bonus appears)
 ; + running enemies graphics/colors
 ; + align collecting animation with pellets (sync animation with position)
@@ -132,7 +132,7 @@
 ; + start with bonus game variations
 ; + display high score during game select
 ; + high score
-;   + score and level
+;   + score and line
 ;   + determine
 ;   + play sound for new high score (when reached and was not zero before)
 ;   + reset
@@ -145,7 +145,7 @@
 ;   + caused by too much AI logic in the same frame
 ;   Ideas:
 ;   + move code into VSYNC
-;   + do not calc from scratch every frame (.maxLevel, firstPlayer)
+;   + do not calc from scratch every frame (.maxLine , firstPlayer)
 ;   + optimize code
 ;   + check timer and abandon early
 ; + sound
@@ -169,8 +169,8 @@
 ;   + repeating after score loop
 ;   + sound
 ;   x automatic start
-; + increased scores for later levels (must not overflow!)
-;   + level div 4 is OK (up to 8976 points at level 44)
+; + increased scores for later lines (must not overflow!)
+;   + line div 4 is OK (up to 8976 points at line 44)
 ;   + multiply with BCD is slow, reduce CPU time in overscan:
 ;     + pellet collision check for only 50% players
 ;     x hiscore check only for 1 or 2 players/frame (??? cycles at game start)
@@ -190,7 +190,7 @@
 ;---------------------------------------------------------------
 ; *** Code Structure ***
 ; OverScan
-; - determine maximum human player level
+; - determine maximum human player line
 ; - handle player/pellet collisions
 ; - handle player/enemy collisions
 ; - update audio
@@ -239,11 +239,11 @@ BIG_MOUTH       = 1 ; (0) bigger mouth for player
 HISCORE_DING    = 1 ; (-99) 10 dings at new high score
 EXTEND_COUNTDOWN= 1 ; (-12) extends countdown with each new activated player
 LONG_DEATH      = 1 ; (-??) = 0 is still TODO
-LIMIT_LEVEL     = 0 ; (-9) limit level to 99 (doubtful that this can ever be reached)
+LIMIT_LINE      = 0 ; (-9) limit line to 99 (doubtful that this can ever be reached)
 DEMO_SOUND      = 1 ; (-12/15) play sounds during demo mode
-MULT_SCORE      = 1 ; (-25) multiply scores by level/4
+MULT_SCORE      = 1 ; (-25) multiply scores by line/4
 POWER_CNT       = 0 ; (-6) count active power-ups (saves some cycles if required)
-MAX_BONUS       = 1 ; (-12) only highest bonus item(s) after level 32
+MAX_BONUS       = 1 ; (-12) only highest bonus item(s) after line 32
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -275,9 +275,9 @@ NUM_VARIATIONS  = 8                 ; TODO (8|4... saves 7 bytes)
 
 POWER_TIM       = 140
 
-NUM_BONUS       = 8                 ; enough for 32 levels
+NUM_BONUS       = 8                 ; enough for 32 lines
 X_BONUS_OFF     = $ff
-BONUS_SHIFT     = 2                 ; 2 = every 4th level
+BONUS_SHIFT     = 2                 ; 2 = every 4th line
 BONUS_MASK      = (1<<BONUS_SHIFT)-1
 
 ; Note: player has to be able to reach a most centered power-up. That's the 8th
@@ -288,10 +288,10 @@ BONUS_MASK      = (1<<BONUS_SHIFT)-1
 DELTA_SPEED     = 140                   ; 40% delta; start: player d% faster, end: enemy d% faster
 INIT_EN_SPEED   = 48
 DIFF_EN_SPEED   = 6
-MAX_EN_SPEED    = 255                   ; reached after 35 levels
-INIT_PL_SPEED   = (INIT_EN_SPEED * DELTA_SPEED + 50) / 100    ; -> equal speed after ~9 levels
+MAX_EN_SPEED    = 255                   ; reached after 35 lines
+INIT_PL_SPEED   = (INIT_EN_SPEED * DELTA_SPEED + 50) / 100    ; -> equal speed after ~9 lines
 DIFF_PL_SPEED   = DIFF_EN_SPEED - 2                                     ; = 4
-MAX_PL_SPEED    = (MAX_EN_SPEED * 100 + DELTA_SPEED / 2) / DELTA_SPEED  ; reached after 29 levels
+MAX_PL_SPEED    = (MAX_EN_SPEED * 100 + DELTA_SPEED / 2) / DELTA_SPEED  ; reached after 29 lines
 ;    ECHO "      player vs enemy"
 ;    ECHO "Speeds: ", [MAX_PL_SPEED]d, "vs", [MAX_EN_SPEED]d
 ;    ECHO "Ranges:", [MAX_PL_SPEED*100/8]d, "vs", [MAX_EN_SPEED*100/12]d
@@ -347,7 +347,7 @@ randomHi        .byte
   ENDIF ;}
 debounce        .byte               ; D.......  Debounce ; TODO: = powerTimLst?
 ;---------------------------------------
-levelLst        ds  NUM_PLAYERS
+lineLst         ds  NUM_PLAYERS
 ;---------------------------------------
 xPlayerLst      ds  NUM_PLAYERS             ; 32 bytes
 xEnemyLst       ds  NUM_PLAYERS
@@ -370,7 +370,7 @@ enemySpeed      .byte
 enemySpeedSum   .byte
 bonusSpeed      = enemySpeed
 bonusSpeedSum   .byte
-maxLevel        .byte               ; permanent value instead of calculated from scratch
+maxLine         .byte               ; permanent value instead of calculated from scratch
 firstPlayer     .byte               ; used if Get1stPlayerScore takes too long
 ; reused:
 lastButtons     = playerSpeed       ; BBBBBBBB  reused during GAME_SELECT & GAME_OVER
@@ -637,7 +637,7 @@ GameInit SUBROUTINE
     lda     #X_BONUS_OFF    ; no bonus
     sta     xBonusLst,x
     lda     #1
-    sta     levelLst,x
+    sta     lineLst,x
     dex
     bpl     .loopPf
 
@@ -722,7 +722,7 @@ DrawScreen SUBROUTINE
     lda     #$ff                ; 2
     adc     #0                  ; 2
     sta     .bonusFlag          ; 3 = 10    0 = (potential) bonus frame, $ff = enemy frame
-; TODO?: use for levelLst,x >> 2, and #$07
+; TODO?: use for lineLst,x >> 2, and #$07
 
     lda     #>ColorTbls
     sta     .ptrCol0+1
@@ -917,15 +917,15 @@ TIM_2a
     eor     #X_BONUS_OFF        ; 2
     beq     .drawEnemy          ; 2/3=13/14
 ; draw bonus:
-    lda     levelLst,x          ; 4
+    lda     lineLst,x           ; 4
   REPEAT BONUS_SHIFT
-    lsr                         ; 2/4/6     every 4th level
+    lsr                         ; 2/4/6     every 4th line
   REPEND                        ;   =  6..10
   IF MAX_BONUS
     cmp     #NUM_BONUS          ;
-    bcc     .lowerLevel
+    bcc     .lowerLine
     lda     #0                  ;           show top bonus
-.lowerLevel
+.lowerLine
   ENDIF
     and     #NUM_BONUS-1        ; 2
     tay                         ; 2
@@ -1199,7 +1199,7 @@ TIM_2b ; 101..146 (+6) cycles (76 * 3 = 158)
 ;---------------------------------------------------------------
 OverScan SUBROUTINE
 ;---------------------------------------------------------------
-; - determine maximum human player level
+; - determine maximum human player line
 ; - handle player/pellet collisions
 ; - handle player/enemy collisions
 ; - update audio
@@ -1214,7 +1214,7 @@ OverScan SUBROUTINE
     lda     #63
   ENDIF
     sta     TIM64T
-TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly human players, less with 50% check)
+TIM_OS                              ; ~2293 cycles (maxLine  permanent, mainly human players, less with 50% check)
 
     bit     gameState
     bmi     .startRunningMode       ; GAME_RUNNING|GAME_OVER
@@ -1349,15 +1349,15 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     ora     pf12RightLst,x
     bne     .skipCXPellet
 ; increase speeds:
-; increase speed only for 1st player reaching next level:
-    lda     levelLst,x
-    cmp     maxLevel
+; increase speed only for 1st player reaching next line:
+    lda     lineLst,x
+    cmp     maxLine
     bcc     .skipIncSpeed
     lda     .playerAI           ; only human players increase speeds (except for demo mode)
     bmi     .demoModeInc        ; demo mode
     bne     .skipIncSpeed
 .demoModeInc
-    inc     maxLevel
+    inc     maxLine
     lda     playerSpeed
 ;    clc
     adc     #DIFF_PL_SPEED-1    ; CF == 1
@@ -1375,16 +1375,16 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     sta     enemySpeed
 ;    sta     bonusSpeed         ; = enemySpeed
 .skipIncSpeed
-  IF LIMIT_LEVEL ;{
-    ldy     levelLst,x
+  IF LIMIT_LINE ;{
+    ldy     lineLst,x
     iny
     cpy     #100
-    bcc     .incLevel
-    ldy     #100 - (1<<BONUS_SHIFT)*NUM_BONUS ; reset level to e.g. 68
-.incLevel
-    sty     levelLst,x
+    bcc     .incLine
+    ldy     #100 - (1<<BONUS_SHIFT)*NUM_BONUS ; reset line to e.g. 68
+.incLine
+    sty     lineLst,x
   ELSE ;}
-    inc     levelLst,x
+    inc     lineLst,x
   ENDIF
 ; new line with random power-up & pellets:
     jsr     SetupPowerPellets
@@ -1393,8 +1393,8 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     lda     gameState
     and     #NO_BONUS_GAME
     bne     .skipBonus
-    lda     levelLst,x
-    and     #BONUS_MASK         ; every 4th level
+    lda     lineLst,x
+    and     #BONUS_MASK         ; every 4th line
     bne     .skipBonus
     txa
     eor     randomLo
@@ -1446,16 +1446,16 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     sta     AUDV0
 .skipBonusSound
 ; add bonus points:
-    lda     levelLst,x
+    lda     lineLst,x
     sbc     #1                  ; or 2, does not matter here
   REPEAT BONUS_SHIFT
     lsr
   REPEND
   IF MAX_BONUS
     cmp     #NUM_BONUS
-    bcc     .lowerLevel
+    bcc     .lowerLine
     lda     #NUM_BONUS-1        ; score top bonus
-.lowerLevel
+.lowerLine
   ENDIF
     and     #NUM_BONUS-1
     tax
@@ -1648,13 +1648,13 @@ TIM_OS                              ; ~2293 cycles (maxLevel permanent, mainly h
     beq     .stopSound1
     cpy     #SIREN_START+1
     bcs     .setAudF1
-    lda     maxLevel            ; increase pitch every 2nd level
+    lda     maxLine             ; increase pitch every 2nd line
     lsr
     eor     #$ff
     cmp     #-12-1              ; decrease AUDF1 by up to 10
-    bcs     .addLevel
+    bcs     .addLine
     lda     #-12
-.addLevel
+.addLine
     adc     AudF1Tbl,y
     tax
 .setAudF1
@@ -2016,13 +2016,13 @@ ContInitCart                    ; enters with CF=1
     lda     EnemySpeeds,y
     sta     enemySpeed
 ;    sta     bonusSpeed
-    lda     VarLevels,y
+    lda     VarLines,y
     ldx     #NUM_PLAYERS-1
-.loopLevels
-    sta     levelLst,x
+.loopLines
+    sta     lineLst,x
     dex
-    bpl     .loopLevels
-    sta     maxLevel
+    bpl     .loopLines
+    sta     maxLine
 .skipRunningJmp2
     jmp     .skipRunning
 
@@ -2125,7 +2125,7 @@ TIM_SPE
 .setHiScore
     sty     hiScoreLo
     sta     hiScoreHi
-    lda     levelLst,x
+    lda     lineLst,x
     sta     hiScoreLvl
   IF PLUSROM
 ; only new high scores are send:
@@ -2376,14 +2376,14 @@ DEBUG0
 ;    bcs     .noAIPower
 
   ENDIF ;}
-    lda     maxLevel
+    lda     maxLine
     cmp     #16
     lda     xPlayerLst,x
     ldy     powerTimLst,x
-    bcs     .lateLevels
+    bcs     .lateLines
     cpy     #POWER_TIM*1/8
     NOP_W
-.lateLevels
+.lateLines
     cpy     #POWER_TIM*1/4
     bcc     .noAIPower
  ; AI player has power:
@@ -2454,12 +2454,12 @@ PrepareDisplay SUBROUTINE
 ;---------------------------------------------------------------
 ; Display:
 ; - GAME_RUNNING:
-;   - 1st player's score and level (alternating)
+;   - 1st player's score and line (alternating)
 ; - GAME_OVER:
-;   - nth player's score and level (alternating)
+;   - nth player's score and line (alternating)
 ;   - high score
 ; - GAME_SELECT
-;   - start level and bonus
+;   - start line and bonus
 ;   - high score (if saved)
 ; - GAME_START
 ;   - count down
@@ -2567,7 +2567,7 @@ PrepareDisplay SUBROUTINE
     inc     .char0
     lda     #SCORE_TIM
     cmp     frameCnt
-    bcs     .displayRankLevel
+    bcs     .displayRankLine
     ldy     #ID_DOT
     sty     .char1
     bcc     .contGameOver
@@ -2586,7 +2586,7 @@ PrepareDisplay SUBROUTINE
     ldy     hiScoreHi
     bcc     .contDisplayHighScore
     lda     hiScoreLvl
-    bcs     .contDisplayHighLevel
+    bcs     .contDisplayHighLine
 ;---------------------------------------------------------------
 .selectMode
 ; display bonus mode and starting line (B.LnLL), alternating with high score :
@@ -2612,7 +2612,7 @@ PrepareDisplay SUBROUTINE
     lda     gameState
     and     #DIFF_MASK          ; game variation diff
     tay
-    lda     VarLevels,y
+    lda     VarLines,y
     bne     .contSelectMode
 ---------------------------------------------------------------
 .startRunningMode
@@ -2639,9 +2639,9 @@ TIM_SCS ; 523..759 cycles
     bcc     .skipGet1st
     jsr     Get1stPlayerScore   ;388    get player id of largest score
 .skipGet1st
-    lda     #$55                ;       2/3 score, 1/3 level
+    lda     #$55                ;       2/3 score, 1/3 line
     cmp     frameCnt
-.displayRankLevel
+.displayRankLine
     txa
     eor     #$07
     sta     .char0              ;       displayed player number - 1
@@ -2653,15 +2653,15 @@ TIM_SCS ; 523..759 cycles
     sta     .scoreLo
     sty     .scoreMid
     bcc     .displayScore
-; display level:
-    lda     levelLst,x
-.contDisplayHighLevel
+; display line:
+    lda     lineLst,x
+.contDisplayHighLine
 .contSelectMode
     HEX2BCD
     cmp     #$10
-    bcs     .largeLevel
+    bcs     .largeLine
     ora     #ID_BLANK<<4
-.largeLevel
+.largeLine
     sta     .scoreLo
     ldx     firstPlayer
     lda     #ID_LETTER_L<<4|ID_Letter_N
@@ -2791,7 +2791,7 @@ AddScoreLo SUBROUTINE
   IF MULT_SCORE
 .scoreLo    = tmpVars + 2
     sta     .scoreLo
-    lda     levelLst,x
+    lda     lineLst,x
     lsr
     lsr                     ; div 4
     tay
@@ -3088,12 +3088,12 @@ PlusROM_API
     ds      16, 0
   ENDIF
 
-LVL_0   = 1    ; all must NOT divide by 4! (bonus levels)
+LVL_0   = 1    ; all must NOT divide by 4! (bonus lines)
 LVL_1   = 7
 LVL_2   = 14
 LVL_3   = 22
 
-VarLevels
+VarLines
     .byte   LVL_0, LVL_1, LVL_2, LVL_3
 
 PlayerSpeeds
