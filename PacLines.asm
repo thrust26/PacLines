@@ -365,19 +365,19 @@ pf12RightLst    = pfLst+NUM_PLAYERS*2
 ;---------------------------------------
 ; only used during GAME_RUNNING:
 playerSpeed     .byte
-playerSpeedSum  .byte
+xPlayerFract    .byte
 enemySpeed      .byte
-enemySpeedSum   .byte
+xEnemyFract     .byte
 bonusSpeed      = enemySpeed
-bonusSpeedSum   .byte
+xBonusFract     .byte
 maxLine         .byte               ; permanent value instead of calculated from scratch
 firstPlayer     .byte               ; used if Get1stPlayerScore takes too long
 ; reused:
 lastButtons     = playerSpeed       ; BBBBBBBB  reused during GAME_SELECT & GAME_OVER
-waitedOver      = playerSpeedSum    ; ......WW  reused during GAME_OVER
+waitedOver      = xPlayerFract      ; ......WW  reused during GAME_OVER
 playerIdx       = enemySpeed        ; ....PPPP  reused during GAME_OVER (score displayed when game is over)
-ignoredScores   = enemySpeedSum     ; IIIIIIII  reused for displaying alternating scores
-nxtIgnoredScores= bonusSpeedSum
+ignoredScores   = xEnemyFract       ; IIIIIIII  reused for displaying alternating scores
+nxtIgnoredScores= xBonusFract
 ;---------------------------------------
 ; row bits:
   IF SWITCH_DIR
@@ -2038,38 +2038,36 @@ ContInitCart                    ; enters with CF=1
 
 ; *** setup player, enemy & bonus speeds ***
 .runningMode
-TIM_SPS ; 56..91 cycles (more to VSYNC?)
-    lda     #0
-    tax
-    sta     .playerSpeed
+TIM_SPS ; 57..87 cycles (move to VSYNC?)
+    lda     #0                  ; 2
+    sta     .playerSpeed        ; 3
+    sta     .enemySpeed         ; 3
+    sta     .bonusSpeed         ; 3
+
     lda     playerSpeed
     asl
     rol     .playerSpeed
-    adc     playerSpeedSum
-    sta     playerSpeedSum
+    adc     xPlayerFract
+    sta     xPlayerFract
     bcc     .skipIncPlayer
     inc     .playerSpeed        ;           -> 0..2
 .skipIncPlayer
-    txa
-    sta     .enemySpeed
     lda     enemySpeed
     asl
     rol     .enemySpeed
-    adc     enemySpeedSum
-    sta     enemySpeedSum
+    adc     xEnemyFract
+    sta     xEnemyFract
     bcc     .skipIncEnemy
     inc     .enemySpeed         ;           -> 0..2
 .skipIncEnemy
     lda     frameCnt            ; 3
-    lsr                         ; 2
+    lsr                         ; 2         50% of enemy speed
     bcc     .skipBonusSpeed     ; 2/3=  7/8
-    txa                         ; 2
-    sta     .bonusSpeed         ; 3
     lda     bonusSpeed          ; 3         = enemySpeed
     asl                         ; 2
     rol     .bonusSpeed         ; 5
-    adc     bonusSpeedSum       ; 3
-    sta     bonusSpeedSum       ; 3
+    adc     xBonusFract         ; 3
+    sta     xBonusFract         ; 3
     bcc     .skipIncBonus       ; 2/3
     inc     .bonusSpeed         ; 5
 .skipIncBonus                   ;   = 24/28
