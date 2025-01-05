@@ -1,5 +1,5 @@
 # Pac-Line x 8
-Copyright 2024 - Thomas Jentzsch
+Copyright 2025 - Thomas Jentzsch
 
 ## The Game
 
