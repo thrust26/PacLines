@@ -260,8 +260,10 @@ PlayerCol ; align LineCols!
 ;    .byte   GREEN_YELLOW|$f, CYAN|$f, VIOLET|$f, BROWN|$f
 ;    .byte   GREEN|$f, BLUE|$f, RED|$f, YELLOW|$f
   ELSE
-    .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
-    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
+;    .byte   BLACK|$f, CYAN_GREEN|$f, PURPLE|$f, ORANGE|$f
+;    .byte   GREEN_YELLOW|$f, BLUE_CYAN|$f, MAUVE|$f, YELLOW|$f
+    .byte   GREEN_YELLOW|$f, CYAN|$f, PURPLE|$f, RED|$f
+    .byte   CYAN_GREEN|$f, BLUE|$f, MAUVE|$f, YELLOW|$f
   ENDIF
     .byte   WHITE   ; score display
     CHECKPAGE_DATA_LBL PlayerCol, "PlayerCol"

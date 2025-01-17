@@ -1,6 +1,6 @@
 ; Pac-Line x 8
 ;
-; (C)2024 - Thomas Jentzsch
+; (C)2025 - Thomas Jentzsch
 
     processor 6502
   LIST OFF
@@ -21,11 +21,10 @@
 ; - AI has problems with 1st pellet left of center
 ; - PAL color checks
 ; - update version number
-; ? replace top fruits with original Pac-Man items: Galaxian, Bell, Key
 ; - ...
 
 ; Ideas:
-; - alternative theme (for cart release)
+; x alternative theme (for cart release)
 ;   ? robots (cute, bad)
 ;     - collecting tools: screw, screwdriver, screw nut, wrench,
 ;             batteries, pliers, multi meter, drilling machine
@@ -37,11 +36,11 @@
 ;   ? ZPH: Cats, Toys, Treats
 ;   ? ...
 ; ? pellets, wafers, dots...?
-; ? wider enemies?
-; ? deadly bonuses (mushrooms)
+; x wider enemies?
+; x deadly bonuses (mushrooms)
 ; x countdown with player graphics eating pellets
 ; x high score screen (787 cycles per line?)
-; ? 16-bit random
+; x 16-bit random
 
 ; DONEs:
 ; + difficulty ramp up
@@ -186,6 +185,7 @@
 ; + only highest bonus from line 32 on
 ; + #7 score display after demo mode starts wrong
 ; + PlusCart tests
+; x replace top fruits with original Pac-Man items: Galaxian, Bell, Key
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -2828,7 +2828,7 @@ CopyRight
    ELSE
     .byte   " (PAL60)"
    ENDIF
-    .byte   " - (C)2024 Thomas Jentzsch "
+    .byte   " - (C)2025 Thomas Jentzsch "
   ENDIF
 COPYRIGHT_LEN SET . - CopyRight
 

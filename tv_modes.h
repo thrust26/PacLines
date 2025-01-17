@@ -67,20 +67,23 @@ GREEN_BEIGE     = $e0       ; ORANGE_GREEN ($1.5)
 BEIGE           = $f0       ; LT. ORANGE ($2.5)
   ELSE                      ;
 YELLOW          = $20       ;   0
-BROWN           = YELLOW+$20    ;
-ORANGE          = $40+$20   ;   4
-RED             = $60       ;
+BROWN           = YELLOW+$20;
+ORANGE          = $40+$20   ;
+RED             = $60       ;   4
 MAUVE           = $80       ;   1
 VIOLET          = $a0       ;
 PURPLE          = $c0       ;   5
-BLUE            = $d0       ;
-BLUE_CYAN       = $b0       ;   2
-CYAN            = $90       ;
-CYAN_GREEN      = $70       ;   6
+BLUE            = $d0       ;   2
+BLUE_CYAN       = $b0       ;
+CYAN            = $90       ;   6
+CYAN_GREEN      = $70       ;   3
 GREEN           = $50       ;
-GREEN_YELLOW    = $30       ;   3
+GREEN_YELLOW    = $30       ;   7
 GREEN_BEIGE     = GREEN_YELLOW
 BEIGE           = YELLOW    ;   ???
   ENDIF
 
+; 2, 4, 6, 8, a, c, d, b, 9, 7, 5, 3
+; 0     4  1     5     2     6     3    alt
+; 0     4  1     5  2     6  3     7    neu
     LIST ON
