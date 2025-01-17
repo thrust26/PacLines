@@ -212,7 +212,7 @@
 ; A S S E M B L E R - S W I T C H E S
 ;===============================================================================
 
-VERSION         = $0092
+VERSION         = $0100
 BASE_ADR        = $f000     ; 4K
 
   IFNCONST TV_MODE ; manually defined here
@@ -390,9 +390,9 @@ playerDone      .byte               ; 0 = alive, 1 = dead/score rolled
 enemyEyes       .byte               ; 0 = alive, 1 = eyes
 ;---------------------------------------
 powerTimLst     ds NUM_PLAYERS              ;  8 bytes
-  IF POWER_CNT
+  IF POWER_CNT ;{
 powerTimCnt     .byte
-  ENDIF
+  ENDIF ;}
 ;---------------------------------------
 audIdxLst       ds  2
 audIdx0         = audIdxLst
@@ -407,7 +407,7 @@ HISCORE_BYTES   = 3
 hiScoreLst      ds  HISCORE_BYTES   ; must be followed by gameState for PlusROM HSC
 hiScoreLo       = hiScoreLst
 hiScoreHi       = hiScoreLst+1
-hiScoreLvl      = hiScoreLst+2
+hiScoreLine     = hiScoreLst+2
 gameState       .byte               ; MMrLDBVV  Mode, Right/Left QuadTari, Dinged, Bonus, Variation
 ;---------------------------------------
 countDown       = scoreLoLst        ; reused during GAME_START
@@ -1299,11 +1299,11 @@ TIM_OS                              ; ~2293 cycles (maxLine  permanent, mainly h
     eor     .xPos
     bne     .noPower
     sta     xPowerLst,x
-  IF POWER_CNT
+  IF POWER_CNT ;{
     lda     powerTimCnt
     ora     Pot2Bit,x
     sta     powerTimCnt
-   ENDIF
+   ENDIF ;}
     lda     #POWER_TIM
     sta     powerTimLst,x
     lda     #POWER_PTS
@@ -1534,11 +1534,11 @@ TIM_OS                              ; ~2293 cycles (maxLine  permanent, mainly h
     sta     enemyLeft
     lda     #0                  ; disable power-up
     sta     powerTimLst,x
-  IF POWER_CNT
+  IF POWER_CNT ;{
     lda     powerTimCnt
     and     Pot2Mask,x
     sta     powerTimCnt
-  ENDIF
+  ENDIF ;}
 .skipCXSprite
 ;---------------------------------------
 ; loop:
@@ -1616,7 +1616,7 @@ TIM_OS                              ; ~2293 cycles (maxLine  permanent, mainly h
     dex
     bpl     .loopPowerTim
 ; up to 233 cycles
- ELSE ; POWER_CNT
+ ELSE ;{ POWER_CNT
     lax     playerAI
     eor     #$ff                ; demo mode?
    IF DEMO_SOUND
@@ -1627,7 +1627,7 @@ TIM_OS                              ; ~2293 cycles (maxLine  permanent, mainly h
     ldx     #SCARED_IDX
     and     powerTimCnt
     bne     .startEnemySound
- ENDIF
+ ENDIF ;}
 
 ; siren sound?
   IF !DEMO_SOUND
@@ -1874,7 +1874,7 @@ ContInitCart                    ; enters with CF=1
     lda     #0
     sta     hiScoreLo
     sta     hiScoreHi
-    sta     hiScoreLvl
+    sta     hiScoreLine
 .skipResetHiScore
 
 ;---------------------------------------------------------------
@@ -2124,7 +2124,7 @@ TIM_SPE
     sty     hiScoreLo
     sta     hiScoreHi
     lda     lineLst,x
-    sta     hiScoreLvl
+    sta     hiScoreLine
   IF PLUSROM
 ; only new high scores are send:
     ldx     #HISCORE_BYTES      ; including gameState
@@ -2257,11 +2257,11 @@ TIM_SPE
     sec
     sbc     .tmpSpeed           ; decrease in sync with speed
     bcs     .timOk
-  IF POWER_CNT
+  IF POWER_CNT ;{
     lda     powerTimCnt
     and     Pot2Mask,x
     sta     powerTimCnt
-  ENDIF
+  ENDIF ;}
     lda     #0
 .timOk
     sta     powerTimLst,x
@@ -2326,63 +2326,22 @@ TIM_SPE
 ; 1. chase ghost
 ;    - while power is enabled
 ;    - stop chasing when power time runs out
-;    - time enough to reach border/ghost: chase
-;    - else use AI from 2.
 ; 2. run away from ghost without power if ghost is close
 ;    - close means, distance to ghost smaller than 1.5x distance to opposite border
-
-
-; different AI during earlier power mode:
-
-
-; xPlayer * 1.5 | 160 - xPlayer * 1.5 > powerTim -> use no power AI
-
-DEBUG0
-  IF 0 ;{
-;    lda     xPlayerLst,x
-;    lsr
-;    adc     xPlayerLst,x        ; e.g. 120 * 3 / 2 = 180
-;    tay
-    lda     xPlayerLst,x
-    cmp     xEnemyLst,x
- ;   tya
-    bcc     .aiPowerRight
-; enemy at left:
-    cmp     powerTimLst,x
-    bcs     .enemyLeft          ; no power AI
-    bcc     .moveLeft           ; chase!
-
-
-.aiPowerRight
-    eor     #$ff                ; -180
-    adc     #SCW*2/2            ; +241 = 60
-    cmp     powerTimLst,x
-;    tya
-    lda     xPlayerLst,x
-    bcs     .enemyRight         ; no power AI
-    bcc     .moveRight          ; chase!
-
-
-
-;    cmp     #SCW*3/4            ; (80 * 1.5 = 120)
-;    bcc     .atLeft
-;    eor     #$ff                ; = -181
-;    adc     #SCW*3/2            ; +  241
-;.atLeft
-;    cmp     powerTimLst,x
-;    lda     xPlayerLst,x
-;    bcs     .noAIPower
-
-  ENDIF ;}
     lda     maxLine
-    cmp     #16
-    lda     xPlayerLst,x
+    cmp     #24
     ldy     powerTimLst,x
-    bcs     .lateLines
+    bcs     .highLines
+    cmp     #16
+    bcs     .midLines
     cpy     #POWER_TIM*1/8
     NOP_W
-.lateLines
+.midLines
+    cpy     #POWER_TIM*1/6
+    NOP_W
+.highLines
     cpy     #POWER_TIM*1/4
+    lda     xPlayerLst,x
     bcc     .noAIPower
  ; AI player has power:
     cmp     xEnemyLst,x
@@ -2539,7 +2498,7 @@ PrepareDisplay SUBROUTINE
 .notDemoMode
     sta     nxtIgnoredScores
     ldx     .countHuman
-    lda     hiScoreLvl
+    lda     hiScoreLine
     beq     .hiScoreNotSet
     inx                         ; display high score first
 .hiScoreNotSet
@@ -2583,14 +2542,14 @@ PrepareDisplay SUBROUTINE
     lda     hiScoreLo
     ldy     hiScoreHi
     bcc     .contDisplayHighScore
-    lda     hiScoreLvl
+    lda     hiScoreLine
     bcs     .contDisplayHighLine
 ;---------------------------------------------------------------
 .selectMode
 ; display bonus mode and starting line (B.LnLL), alternating with high score :
     iny
     sty     firstPlayer         ; Y = NUM_PLAYERS -> white display
-    lda     hiScoreLvl          ; any highscore existing?
+    lda     hiScoreLine         ; any highscore existing?
     beq     .skipShowHiScore    ;  no, do not show high score
     lda     gameState
     eor     hiScoreVar
@@ -2841,7 +2800,7 @@ DEBUG1
     cmp     scoreLoLst,x
     bcs     .exit
 .newHiScore
-    lda     hiScoreLvl      ; old high score existing?
+    lda     hiScoreLine     ; old high score existing?
     beq     .exit           ;  no, ignore
 ;    lda     playerAI
 ;    and     Pot2Bit,x
