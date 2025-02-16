@@ -1,4 +1,4 @@
-; Pac-Line x 8
+; Pac-Line Panic
 ;
 ; (C)2025 - Thomas Jentzsch
 
@@ -212,6 +212,8 @@
 ; A S S E M B L E R - S W I T C H E S
 ;===============================================================================
 
+;GAME_NAME       = "Pac-Line x 8"
+GAME_NAME       = "Pac-Line Panic"
 VERSION         = $0100
 BASE_ADR        = $f000     ; 4K
 
@@ -591,7 +593,7 @@ PASS SET PASS + 1
   ENDM
 
  IF PLUSROM
-PLUSROM_ID  = 84                ;           Pac-Line x 8 game id in Highscore DB
+PLUSROM_ID  = 84                ;           Pac-Line Panic game id in Highscore DB
 
   MAC COMMIT_PLUSROM_SEND
     lda     #PLUSROM_ID
@@ -2820,7 +2822,8 @@ DEBUG1
 
 CopyRight
   IF COPYRIGHT
-    .byte   " Pac-Line x 8"
+;    .byte   " "
+    .byte   GAME_NAME
     .byte    " - V"
     VERSION_STR
    IF NTSC_COL
@@ -2828,7 +2831,8 @@ CopyRight
    ELSE
     .byte   " (PAL60)"
    ENDIF
-    .byte   " - (C)2025 Thomas Jentzsch "
+    .byte   " - (C)2025 Thomas Jentzsch"
+;    .byte   " "
   ENDIF
 COPYRIGHT_LEN SET . - CopyRight
 
@@ -2838,8 +2842,8 @@ COPYRIGHT_LEN SET . - CopyRight
 ;===============================================================================
 
 PfOffset
-    ds      2, pf01LeftLst   - pfLst        ; = 0
-    ds      4, pf01LeftLst   - pfLst        ; = 0
+    ds      2, pf01LeftLst   - pfLst        ; = 0   TODO? overlap, also reorder pf12RightLst last -> 8x 0
+    ds      4, pf01LeftLst   - pfLst        ; = 0   TODO? overlap
     ds      4, pf20MiddleLst - pfLst        ; = 4
     ds      2, pf20MiddleLst - pfLst        ; = 4
     ds      4, pf12RightLst  - pfLst        ; = 8
