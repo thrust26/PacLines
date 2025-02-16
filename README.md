@@ -1,9 +1,9 @@
-# Pac-Line x 8
+# Pac-Line Panic
 Copyright 2025 - Thomas Jentzsch
 
 ## The Game
 
-**Pac-Line x 8** is a 4K, one button, up to eight simultaneous players, Pac-Line game for the Atari 2600.
+**Pac-Line Panic** is a 4K, one button, up to eight simultaneous players, Pac-Line game for the Atari 2600.
 
 ## Controls
 ### Paddles
@@ -18,8 +18,8 @@ To start a new game press **Reset**. Or **Fire** while not in a running game.
 
 ## Playing the Game
 ### Start Countdown
-After pressing **Reset** or **Fire**, a short countdown starts. During this countdown, each player must press the paddle fire button to activate her/his Pac-Man for the game. Activated lines are displayed colored and with their pellets enabled. The more Pac-Men are getting activated, the longer the countdown lasts. 
- 
+After pressing **Reset** or **Fire**, a short countdown starts. During this countdown, each player must press the paddle fire button to activate her/his Pac-Man for the game. Activated lines are displayed colored and with their pellets enabled. The more Pac-Men are getting activated, the longer the countdown lasts.
+
 The game starts immediately after the countdown. Inactive Pac-Men will be controlled by the game's AI. If no Pac-Man got actived, the AI will start playing with itself (demo mode).
 
 ### The Game
@@ -35,12 +35,12 @@ After clearing a line, a new line with all pellets reenabled appears. Each new l
 The row number and score of the current leading player is displayed at the top of the screen, alternating with the current line number and using the player's color.
 
 Points are awarded for each eaten or caught object as follows:
-- pellet: 1.. points 
+- pellet: 1.. points
 - power pellet: 5.. points
 - ghost: 10.. points
 - fruit: 10..500 points
 
-The points for pellets and ghosts are multipied by a factor. It starts at 1 and is increased by 1 every 4th line. 
+The points for pellets and ghosts are multipied by a factor. It starts at 1 and is increased by 1 every 4th line.
 
 ### High Scores
 When the game is over, the high score of the current game variation will be displayed first (white, e.g. "HI 1234"). Then all active player's results will be displayed one by one, ordered by their rank and using the player's color. For each player, there will be two displays:
@@ -48,12 +48,12 @@ When the game is over, the high score of the current game variation will be disp
 1. rank & score (e.g. "1. 1234")
 2. player number & line (e.g. "4 LN.17")
 
-The local high score will be reset when a game with a different variation is started. Every new high score will be send to the PlusCart High Score Club. 
+The local high score will be reset when a game with a different variation is started. Every new high score will be send to the PlusCart High Score Club.
 
 ## Acknowledgements
-**Pac-Line x 8** has been developed and tested with **Stella**, the best emulator for the Atari 2600. Pac-Line x 8 is based on _Paku Paku_ (https://abagames.github.io/crisp-game-lib-11-games/?pakupaku).
+**Pac-Line Panic** has been developed and tested with **Stella**, the best emulator for the Atari 2600. Pac-Line Panic is based on _Paku Paku_ (https://abagames.github.io/crisp-game-lib-11-games/?pakupaku).
 
 Thanks to the AtariAge community for testing the game and providing valuable input.
 
 ## Legal
-This game is freeware, but copyrighted; it may be freely distributed, but it **must** be always accompanied by this documentation file. This program may be included on websites and shareware or freeware compilations, but please contact me first. You **cannot** distribute Pac-Line x 8 on Atari 2600 cartridges without my **explicit** permission.
+This game is freeware, but copyrighted; it may be freely distributed, but it **must** be always accompanied by this documentation file. This program may be included on websites and shareware or freeware compilations, but please contact me first. You **cannot** distribute Pac-Line Panic on Atari 2600 cartridges without my **explicit** permission.
