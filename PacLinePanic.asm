@@ -21,6 +21,8 @@
 ; - AI has problems with 1st pellet left of center
 ; - PAL color checks
 ; - update version number
+; o high scores laden
+; - high scores jedes Mal senden
 ; - ...
 
 ; Ideas:
@@ -186,6 +188,10 @@
 ; + #7 score display after demo mode starts wrong
 ; + PlusCart tests
 ; x replace top fruits with original Pac-Man items: Galaxian, Bell, Key
+; + load high score from PlusROM backend:
+;   x check and set request active flag
+;   + work if no PlusROM
+;   + initial loading (variation 0)
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -214,7 +220,7 @@
 
 ;GAME_NAME       = "Pac-Line x 8"
 GAME_NAME       = "Pac-Line Panic"
-VERSION         = $0100
+VERSION         = $0110
 BASE_ADR        = $f000     ; 4K
 
   IFNCONST TV_MODE ; manually defined here
@@ -229,9 +235,10 @@ ILLEGAL         = 1
 DEBUG           = 1
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey (too many bytes)
-PLUSROM         = 1 ; (-34)
-COPYRIGHT       = 1 ; (-40/41) add copyright notices into code
-
+PLUSROM         = 1 ; (-34) save current variation's high score to PlusStore HSC backend
+PLUSROM_LOAD    = 1 ; (-34) load current variation's high score from PlusStore HSC backend
+COPYRIGHT       = 0 ; (-40/41) add copyright notice into code
+COPYRIGHT_SHORT = 0 ; (-21/22) add short copyright notice into code
 RAND16          = 0 ; (-3, -1 RAM) 16-bit random values
 FRAME_LINES     = 1 ; (-12) draw white lines at top and bottom
 SWITCH_DIR      = 1 ; (-28, -1 RAM)
@@ -380,6 +387,9 @@ waitedOver      = xPlayerFract      ; ......WW  reused during GAME_OVER
 playerIdx       = enemySpeed        ; ....PPPP  reused during GAME_OVER (score displayed when game is over)
 ignoredScores   = xEnemyFract       ; IIIIIIII  reused for displaying alternating scores
 nxtIgnoredScores= xBonusFract
+;  IF PLUSROM_LOAD
+;wait4Response   = maxLine
+;  ENDIF
 ;---------------------------------------
 ; row bits:
   IF SWITCH_DIR
@@ -414,6 +424,9 @@ gameState       .byte               ; MMrLDBVV  Mode, Right/Left QuadTari, Dinge
 ;---------------------------------------
 countDown       = scoreLoLst        ; reused during GAME_START
 ;---------------------------------------
+  IF PLUSROM_LOAD
+wait4Response   .byte
+  ENDIF
 cxPelletBits    .byte               ; temporary
 cxSpriteBits    .byte               ; temporary
 
@@ -425,8 +438,8 @@ tmpVars         = $100 - STACK_SIZE - NUM_TMPS
   IF PLUSROM
 WriteToBuffer       = $1ff0     ; MUST be $1xxx (used for detection)!
 WriteSendBuffer     = $1ff1
-;ReceiveBuffer       = $1ff2
-;ReceiveBufferSize   = $1ff3
+ReceiveBuffer       = $1ff2
+ReceiveBufferSize   = $1ff3
   ENDIF
 
 ;===============================================================================
@@ -511,7 +524,10 @@ _ADDR SET . - 1 ; hack to convince DASM
     .byte   ((VERSION & $f00) >> 8) + 48
     .byte   "."
     .byte   ((VERSION & $0f0) >> 4) + 48
+   IF VERSION < $100 | (VERSION & $00f) != 0
+;   IF (VERSION & $00f) != 0
     .byte   ((VERSION & $00f) >> 0) + 48
+   ENDIF
   ENDM
 
 ;---------------------------------------------------------------
@@ -1788,11 +1804,22 @@ ButtonReset
     NOP_B
 .alreadyInSelect
     plp                         ; restore RESET bit
+  IF !PLUSROM_LOAD
     bcc     .contReset
+  ELSE
+    bcs     .contSelect
+    jmp     .contReset
+
+.contSelect
+  ENDIF
 ; handle SELECT switch:
   IF NUM_VARIATIONS = 8 | NUM_VARIATIONS = 4
     adc     #1-1
     and     #VAR_MASK           ; increase game variation
+DEBUG0
+   IF PLUSROM_LOAD
+    tay
+   ENDIF
   ELSE ;{
     and     #VAR_MASK           ; increase game variation
     tay
@@ -1807,6 +1834,16 @@ ButtonReset
     and     #VAR_MASK
     eor     gameState
     sta     gameState
+  IF PLUSROM_LOAD
+  lda     wait4Response
+  bne     .skipRequest
+    sty     hiScoreVar
+    sty     WriteToBuffer       ; Y = game variation as stored in DB
+    lda     #PLUSROM_ID         ; Pac-Line Panic HSC game-id (84 = %01010100)
+    sta     WriteSendBuffer     ; send request
+  sta     wait4Response
+.skipRequest
+  ENDIF
 ;    bpl     .skipSwitches
 ;    DEBUG_BRK
     NOP_W
@@ -1816,6 +1853,20 @@ ButtonReset
 ;    sta     debounce
     asl     debounce            ; $80 -> $00
 .skipSwitches
+  IF PLUSROM_LOAD
+    ldx   ReceiveBufferSize
+    cpx   #HISCORE_BYTES
+    bne   .skipReadResponse
+DEBUG1
+; read response:
+.loopReadHiScore
+    lda     ReceiveBuffer       ; (line), hi, lo
+    sta     hiScoreLst-1,x
+    dex
+    bne     .loopReadHiScore
+  stx     wait4Response
+.skipReadResponse
+  ENDIF
     bit     gameState
     bpl     .selectOverMode     ; GAME_OVER|GAME_SELECT
     jmp     .startRunningMode   ; GAME_START|GAME_RUNNING
@@ -2708,6 +2759,11 @@ Start SUBROUTINE
     txs
     pha
     bne     .clearLoop
+  IF PLUSROM_LOAD
+    sta     WriteToBuffer       ; A = game variation (0) as stored in DB
+    lda     #PLUSROM_ID         ; Pac-Line Panic HSC game-id (84 = %01010100)
+    sta     WriteSendBuffer     ; send request
+  ENDIF
 ;---------------------------------------------------------------
 ; Detect QuadTari in left and right port
 ; Check if INPT0/2 get low after ~3 frames
@@ -2833,8 +2889,24 @@ CopyRight
    ENDIF
     .byte   " - (C)2025 Thomas Jentzsch"
 ;    .byte   " "
+  ELSE
+   IF COPYRIGHT_SHORT
+    .byte   "V"
+    VERSION_STR
+   IF NTSC_COL
+    .byte   " NTSC "
+   ELSE
+    .byte   " PAL60 "
+   ENDIF
+   .byte   "(C)Jentzsch"
+   ENDIF
   ENDIF
 COPYRIGHT_LEN SET . - CopyRight
+
+;  IF PLUSROM_LOAD
+;    ECHO "*** 10 extra bytes wasted here! REMOVE! ***"
+;    ds 10, 0
+;  ENDIF
 
 
 ;===============================================================================
