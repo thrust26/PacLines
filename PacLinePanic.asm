@@ -1830,7 +1830,7 @@ ButtonReset
     eor     gameState
     sta     gameState
   IF PLUSROM_LOAD
-    lda     #60                 ; initiate request
+    lda     #45                 ; initiate request
     sta     delayRequest
   ENDIF
     NOP_W
@@ -2765,7 +2765,7 @@ Start SUBROUTINE
     pha
     bne     .clearLoop
   IF PLUSROM_LOAD
-    lda     #60             ; initiate request
+    lda     #45             ; initiate request
     sta     delayRequest
   ENDIF
 ;---------------------------------------------------------------
