@@ -16,6 +16,7 @@
 
 ; BUGs:
 ; - #6 why is extra WSYNC required for Stella? (Stella bug?)
+; - #7 maybe we need a delay after a request got received
 
 ; TODOs:
 ; - AI has problems with 1st pellet left of center
@@ -425,7 +426,7 @@ gameState       .byte               ; MMrLDBVV  Mode, Right/Left QuadTari, Dinge
 countDown       = scoreLoLst        ; reused during GAME_START
 ;---------------------------------------
   IF PLUSROM_LOAD
-wait4Response   .byte
+wait4Response   .byte               ; do not start a new response before a previous one has been processed
   ENDIF
 cxPelletBits    .byte               ; temporary
 cxSpriteBits    .byte               ; temporary
@@ -1766,6 +1767,12 @@ TIM_A0E
     sta     WSYNC
 ;---------------------------------------
     dec     frameCnt
+;DEBUG3
+;  lda     wait4Response
+;  beq     .skipDecWait
+;  dec     wait4Response
+;.skipDecWait ;
+
   IF NTSC_TIM
     ldy     #40-1               ; allows up to 2432 cycles
   ELSE
@@ -1835,14 +1842,17 @@ DEBUG0
     eor     gameState
     sta     gameState
   IF PLUSROM_LOAD
+DEBUG2
   lda     wait4Response
   bne     .skipRequest
     sty     hiScoreVar
     sty     WriteToBuffer       ; Y = game variation as stored in DB
     lda     #PLUSROM_ID         ; Pac-Line Panic HSC game-id (84 = %01010100)
     sta     WriteSendBuffer     ; send request
-  sta     wait4Response
+  dec     wait4Response
+;  NOP_W
 .skipRequest
+;  dec     wait4Response
   ENDIF
 ;    bpl     .skipSwitches
 ;    DEBUG_BRK
@@ -1854,16 +1864,21 @@ DEBUG0
     asl     debounce            ; $80 -> $00
 .skipSwitches
   IF PLUSROM_LOAD
-    ldx   ReceiveBufferSize
-    cpx   #HISCORE_BYTES
-    bne   .skipReadResponse
+  lda     wait4Response
+  beq     .skipDecWait
+  dec     wait4Response
+.skipDecWait
+    ldx   #HISCORE_BYTES-1
+    cpx   ReceiveBufferSize
+    bcs   .skipReadResponse
 DEBUG1
 ; read response:
 .loopReadHiScore
     lda     ReceiveBuffer       ; (line), hi, lo
-    sta     hiScoreLst-1,x
+    sta     hiScoreLst,x
     dex
-    bne     .loopReadHiScore
+    bpl     .loopReadHiScore
+  ldx     #8
   stx     wait4Response
 .skipReadResponse
   ENDIF
@@ -2763,6 +2778,7 @@ Start SUBROUTINE
     sta     WriteToBuffer       ; A = game variation (0) as stored in DB
     lda     #PLUSROM_ID         ; Pac-Line Panic HSC game-id (84 = %01010100)
     sta     WriteSendBuffer     ; send request
+  sta     wait4Response      ; probably not required
   ENDIF
 ;---------------------------------------------------------------
 ; Detect QuadTari in left and right port
