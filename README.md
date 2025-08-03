@@ -12,7 +12,9 @@ If you have a QuadTari, plug it into the two ports of the console and plug the p
 Without a QuadTari, plug the paddles into left and right ports of the console.
 
 ### Switches
-On the title screen or any time during the game, press **Select** to select a game variation. There are 8 game variations, 4 different starting lines each, with or without bonus fruits. The currently selected variation's starting line number is displayed at the top of the screen. If a local high score exists for this variation, it is displayed alternating with the game variation.
+On the title screen or any time during the game, press **Select** to select a game variation. There are 8 game variations, 4 different starting lines each, with or without bonus fruits. The currently selected variation's starting line number is displayed at the top of the screen.
+
+If a local high score exists for this variation, it is displayed alternating with the game variation. If a PlusCart or an emulator supporting it is used, the high score will be loaded from the PlusCart High Score Club.
 
 To start a new game press **Reset**. Or **Fire** while not in a running game.
 

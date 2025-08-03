@@ -16,7 +16,6 @@
 
 ; BUGs:
 ; - #6 why is extra WSYNC required for Stella? (Stella bug?)
-; - #7 maybe we need a delay after a request got received
 
 ; TODOs:
 ; - AI has problems with 1st pellet left of center
@@ -193,6 +192,8 @@
 ;   x check and set request active flag
 ;   + work if no PlusROM
 ;   + initial loading (variation 0)
+; - #8 fix high scores loading, use delay (wait 1s after SELECT)
+
 
 ;---------------------------------------------------------------
 ; *** Code Structure ***
@@ -219,7 +220,6 @@
 ; A S S E M B L E R - S W I T C H E S
 ;===============================================================================
 
-;GAME_NAME       = "Pac-Line x 8"
 GAME_NAME       = "Pac-Line Panic"
 VERSION         = $0110
 BASE_ADR        = $f000     ; 4K
@@ -237,7 +237,7 @@ DEBUG           = 1
 
 SAVEKEY         = 0 ; (-~220) support high scores on SaveKey (too many bytes)
 PLUSROM         = 1 ; (-34) save current variation's high score to PlusStore HSC backend
-PLUSROM_LOAD    = 1 ; (-34) load current variation's high score from PlusStore HSC backend
+PLUSROM_LOAD    = 1 ; (-52) load current variation's high score from PlusStore HSC backend
 COPYRIGHT       = 0 ; (-40/41) add copyright notice into code
 COPYRIGHT_SHORT = 0 ; (-21/22) add short copyright notice into code
 RAND16          = 0 ; (-3, -1 RAM) 16-bit random values
@@ -388,9 +388,6 @@ waitedOver      = xPlayerFract      ; ......WW  reused during GAME_OVER
 playerIdx       = enemySpeed        ; ....PPPP  reused during GAME_OVER (score displayed when game is over)
 ignoredScores   = xEnemyFract       ; IIIIIIII  reused for displaying alternating scores
 nxtIgnoredScores= xBonusFract
-;  IF PLUSROM_LOAD
-;wait4Response   = maxLine
-;  ENDIF
 ;---------------------------------------
 ; row bits:
   IF SWITCH_DIR
@@ -426,7 +423,7 @@ gameState       .byte               ; MMrLDBVV  Mode, Right/Left QuadTari, Dinge
 countDown       = scoreLoLst        ; reused during GAME_START
 ;---------------------------------------
   IF PLUSROM_LOAD
-wait4Response   .byte               ; do not start a new response before a previous one has been processed
+delayRequest   .byte                ; wait before loading high score
   ENDIF
 cxPelletBits    .byte               ; temporary
 cxSpriteBits    .byte               ; temporary
@@ -1767,11 +1764,6 @@ TIM_A0E
     sta     WSYNC
 ;---------------------------------------
     dec     frameCnt
-;DEBUG3
-;  lda     wait4Response
-;  beq     .skipDecWait
-;  dec     wait4Response
-;.skipDecWait ;
 
   IF NTSC_TIM
     ldy     #40-1               ; allows up to 2432 cycles
@@ -1823,10 +1815,6 @@ ButtonReset
   IF NUM_VARIATIONS = 8 | NUM_VARIATIONS = 4
     adc     #1-1
     and     #VAR_MASK           ; increase game variation
-DEBUG0
-   IF PLUSROM_LOAD
-    tay
-   ENDIF
   ELSE ;{
     and     #VAR_MASK           ; increase game variation
     tay
@@ -1842,20 +1830,9 @@ DEBUG0
     eor     gameState
     sta     gameState
   IF PLUSROM_LOAD
-DEBUG2
-  lda     wait4Response
-  bne     .skipRequest
-    sty     hiScoreVar
-    sty     WriteToBuffer       ; Y = game variation as stored in DB
-    lda     #PLUSROM_ID         ; Pac-Line Panic HSC game-id (84 = %01010100)
-    sta     WriteSendBuffer     ; send request
-  dec     wait4Response
-;  NOP_W
-.skipRequest
-;  dec     wait4Response
+    lda     #60                 ; initiate request
+    sta     delayRequest
   ENDIF
-;    bpl     .skipSwitches
-;    DEBUG_BRK
     NOP_W
 .notSwitched
 ;    lda     debounce
@@ -1864,22 +1841,35 @@ DEBUG2
     asl     debounce            ; $80 -> $00
 .skipSwitches
   IF PLUSROM_LOAD
-  lda     wait4Response
-  beq     .skipDecWait
-  dec     wait4Response
-.skipDecWait
-    ldx   #HISCORE_BYTES-1
-    cpx   ReceiveBufferSize
-    bcs   .skipReadResponse
+    lda     delayRequest
+    beq     .skipRequest
+    dec     delayRequest
+    bne     .skipRequest
+DEBUG2
+; start request:
+    lda     gameState
+    and     #VAR_MASK
+    sta     hiScoreVar
+    sta     WriteToBuffer       ; Y = game variation as stored in DB
+    lda     #PLUSROM_ID         ; Pac-Line Panic HSC game-id (84 = %01010100)
+    sta     WriteSendBuffer     ; send request
+.skipRequest
+; check if response is complete:
+    ldx     #HISCORE_BYTES
+    cpx     ReceiveBufferSize
+    bne     .skipReadResponse
 DEBUG1
 ; read response:
 .loopReadHiScore
-    lda     ReceiveBuffer       ; (line), hi, lo
-    sta     hiScoreLst,x
+    lda     ReceiveBuffer       ; line, hi, lo
+    sta     hiScoreLst-1,x
     dex
-    bpl     .loopReadHiScore
-  ldx     #8
-  stx     wait4Response
+    bne     .loopReadHiScore
+; minimum delay before any pending request:
+    lda     delayRequest
+    beq     .skipReadResponse
+    lda     #8
+    sta     delayRequest
 .skipReadResponse
   ENDIF
     bit     gameState
@@ -2775,10 +2765,8 @@ Start SUBROUTINE
     pha
     bne     .clearLoop
   IF PLUSROM_LOAD
-    sta     WriteToBuffer       ; A = game variation (0) as stored in DB
-    lda     #PLUSROM_ID         ; Pac-Line Panic HSC game-id (84 = %01010100)
-    sta     WriteSendBuffer     ; send request
-  sta     wait4Response      ; probably not required
+    lda     #60             ; initiate request
+    sta     delayRequest
   ENDIF
 ;---------------------------------------------------------------
 ; Detect QuadTari in left and right port
