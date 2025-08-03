@@ -1830,8 +1830,7 @@ ButtonReset
     eor     gameState
     sta     gameState
   IF PLUSROM_LOAD
-    lda     #45                 ; initiate request
-    sta     delayRequest
+    inc     delayRequest
   ENDIF
     NOP_W
 .notSwitched
@@ -2765,8 +2764,7 @@ Start SUBROUTINE
     pha
     bne     .clearLoop
   IF PLUSROM_LOAD
-    lda     #45             ; initiate request
-    sta     delayRequest
+    inc     delayRequest    ; initiate request
   ENDIF
 ;---------------------------------------------------------------
 ; Detect QuadTari in left and right port
