@@ -50,7 +50,7 @@ When the game is over, the high score of the current game variation will be disp
 1. rank & score (e.g. "1. 1234")
 2. player number & line (e.g. "4 LN.17")
 
-The local high score will be reset when a game with a different variation is started. Every new high score will be send to the PlusCart High Score Club.
+The local high score will be reset when a game with a different variation is started. The highest score of each game will be send to the PlusCart High Score Club.
 
 ## Acknowledgements
 **Pac-Line Panic** has been developed and tested with **Stella**, the best emulator for the Atari 2600. Pac-Line Panic is based on _Paku Paku_ (https://abagames.github.io/crisp-game-lib-11-games/?pakupaku).

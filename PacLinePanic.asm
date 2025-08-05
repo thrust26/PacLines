@@ -21,8 +21,6 @@
 ; - AI has problems with 1st pellet left of center
 ; - PAL color checks
 ; - update version number
-; o high scores laden
-; - high scores jedes Mal senden
 ; - ...
 
 ; Ideas:
@@ -192,7 +190,9 @@
 ;   x check and set request active flag
 ;   + work if no PlusROM
 ;   + initial loading (variation 0)
-; - #8 fix high scores loading, use delay (wait 1s after SELECT)
+; + load high scores
+;   + #8 fix high scores loading, use delay (wait 1s after SELECT)
+; + sent each high score
 
 
 ;---------------------------------------------------------------
@@ -221,7 +221,7 @@
 ;===============================================================================
 
 GAME_NAME       = "Pac-Line Panic"
-VERSION         = $0110
+VERSION         = $0120
 BASE_ADR        = $f000     ; 4K
 
   IFNCONST TV_MODE ; manually defined here
@@ -254,6 +254,7 @@ DEMO_SOUND      = 1 ; (-12/15) play sounds during demo mode
 MULT_SCORE      = 1 ; (-25) multiply scores by line/4
 POWER_CNT       = 0 ; (-6) count active power-ups (saves some cycles if required)
 MAX_BONUS       = 1 ; (-12) only highest bonus item(s) after line 32
+ALL_HISCORES    = 1 ; (-4) send all high scores
 
 THEME_ORG       = 1
 THEME_ALT_1     = 0 ; TODO
@@ -2170,6 +2171,7 @@ TIM_SPE
     tya                         ; demo mode? (Y = playerAI + 1)
     beq     .skipHiScore        ;  yes
     jsr     Get1stPlayerScore   ; get for largest score
+  IF !ALL_HISCORES || !PLUSROM ;{
     ldy     scoreLoLst,x        ; player in X
     lda     scoreHiLst,x
     cmp     hiScoreHi
@@ -2182,7 +2184,7 @@ TIM_SPE
     sta     hiScoreHi
     lda     lineLst,x
     sta     hiScoreLine
-  IF PLUSROM
+   IF PLUSROM
 ; only new high scores are send:
     ldx     #HISCORE_BYTES      ; including gameState
 .loopSendHiScore
@@ -2190,15 +2192,43 @@ TIM_SPE
     sta     WriteToBuffer       ; var, line, hi, lo
     dex
     bpl     .loopSendHiScore
+; 10 bytes
     COMMIT_PLUSROM_SEND
-  ELSE
+   ELSE
     ds      34-16, $ea
-  ENDIF
+   ENDIF ; /PLUSROM
 .skipHiScore
     lda     gameState
     eor     #GAME_RUNNING^GAME_OVER
     sta     gameState
     jmp     .skipRunning
+  ELSE ;}
+; send each top score of a game:
+    lda     gameState
+    sta     WriteToBuffer       ; var ->
+    eor     #GAME_RUNNING^GAME_OVER
+    sta     gameState
+    lda     lineLst,x
+    sta     WriteToBuffer       ; line ->
+    ldy     scoreLoLst,x        ; player in X
+    lda     scoreHiLst,x
+    sta     WriteToBuffer       ; hi ->
+    sty     WriteToBuffer       ; lo ->
+    cmp     hiScoreHi
+    bcc     .skipHiScore
+    bne     .setHiScore
+    cpy     hiScoreLo
+    bcc     .skipHiScore
+.setHiScore
+    sty     hiScoreLo
+    sta     hiScoreHi
+    lda     lineLst,x
+    sta     hiScoreLine
+.skipHiScore
+; 14 bytes
+    COMMIT_PLUSROM_SEND
+    jmp     .skipRunning
+  ENDIF ;/ALL_HISCORES
 
 .doMove
     lda     playerLeft
